@@ -1225,6 +1225,13 @@ async function openDocumentModal(documentId = null, preferredType = null, prefer
 
     $('#save-document').innerHTML = '<i data-lucide="save"></i> ยืนยันการแก้ไข';
     $('#doc-type').value = doc.document_type;
+    const customerSelect = $('#doc-customer');
+    if (doc.customer_id && !customerSelect.querySelector(`option[value="${doc.customer_id}"]`)) {
+      const option = document.createElement('option');
+      option.value = String(doc.customer_id);
+      option.textContent = `${doc.customer_snapshot?.name || doc.customer_name || 'ลูกค้า'} (คงเดิม)`;
+      customerSelect.appendChild(option);
+    }
     $('#doc-customer').value = String(doc.customer_id);
     $('#doc-date').value = toDateInputValue(doc.document_date);
     $('#doc-due-date').value = toDateInputValue(doc.due_date);
@@ -1669,7 +1676,7 @@ $('#document-form').addEventListener('submit', async (event) => {
       window.open(`./print.html?id=${result.data.id}`, '_blank', 'noopener');
     }
   } catch (error) {
-    const detail = error.details?.length ? `: ${error.details.map((item) => item.message).join(', ')}` : '';
+    const detail = error.details?.length ? `: ${error.details.map((item) => (item.path ? `${item.path}: ` : '') + item.message).join(', ')}` : '';
     showDocumentFormError(`${error.message}${detail}`);
   } finally {
     setBusy(button, false);
