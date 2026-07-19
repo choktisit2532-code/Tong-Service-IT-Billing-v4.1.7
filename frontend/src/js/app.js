@@ -659,7 +659,7 @@ function documentCapabilities(documentRow) {
   const status = documentRow.status;
   const deleted = Boolean(documentRow.deleted_at);
   return {
-    canEdit: !deleted && ((role === 'admin' && ['DRAFT','PENDING','APPROVED','IN_PROGRESS','OVERDUE'].includes(status)) || (role === 'staff' && ['DRAFT','PENDING','APPROVED','IN_PROGRESS'].includes(status))),
+    canEdit: !deleted && ((role === 'admin' && ['DRAFT','PENDING','APPROVED','IN_PROGRESS','OVERDUE','PAID'].includes(status)) || (role === 'staff' && ['DRAFT','PENDING','APPROVED','IN_PROGRESS','PAID'].includes(status))),
     canCancel: !deleted && ((role === 'admin' && ['DRAFT','PENDING','APPROVED','IN_PROGRESS','REJECTED','OVERDUE'].includes(status)) || (role === 'staff' && ['DRAFT','PENDING','APPROVED','IN_PROGRESS'].includes(status))),
     canDelete: !deleted && ((role === 'admin' && ['DRAFT','PENDING','REJECTED','CANCELLED'].includes(status)) || (role === 'staff' && ['DRAFT','PENDING'].includes(status))),
     canRestore: deleted && role === 'admin',
@@ -965,6 +965,54 @@ function selectedSourceTotal() {
   return selectedSourceInputs().reduce((sum, input) => sum + (Number(input.dataset.total) || 0), 0);
 }
 
+function applyFormLockState(locked, isPaid) {
+  $('#doc-customer').disabled = locked;
+  $('#doc-date').disabled = locked;
+  $('#doc-discount').disabled = locked;
+  $('#doc-payment-terms').disabled = locked;
+  $('#doc-delivery-days').disabled = locked;
+  $('#doc-validity-days').disabled = locked;
+  
+  $('#doc-receipt-withholding-enabled').disabled = locked;
+  $('#doc-receipt-withholding-rate').disabled = locked;
+  $('#doc-receipt-withholding-amount').disabled = locked;
+  $('#doc-receipt-transfer-fee').disabled = locked;
+  $('#doc-payment-received-date').disabled = locked;
+  
+  $('#doc-due-date').disabled = isPaid;
+
+  $('#add-item').disabled = locked;
+  $('#add-section').disabled = locked;
+  $('#add-note').disabled = locked;
+  
+  if (locked) {
+    $('#add-item').classList.add('hidden');
+    $('#add-section').classList.add('hidden');
+    $('#add-note').classList.add('hidden');
+    $('#toggle-advanced-lines').classList.add('hidden');
+    $('#advanced-line-actions').classList.add('hidden');
+    
+    $$('[data-doc-type-card]').forEach((card) => {
+      card.disabled = true;
+      card.classList.add('unavailable');
+    });
+    
+    $('#document-modal-subtitle').innerHTML = `<span style="color:var(--warning); font-weight:bold;"><i data-lucide="lock" style="display:inline-block; width:14px; height:14px; vertical-align:middle; margin-right:4px;"></i> เอกสารนี้ถูกชำระแล้วหรือถูกใช้วางบิลแล้ว สามารถแก้ไขได้เฉพาะลายเซ็นต์ วันครบกำหนด หรือหมายเหตุเท่านั้น</span>`;
+  } else {
+    $('#add-item').classList.remove('hidden');
+    $('#add-section').classList.remove('hidden');
+    $('#add-note').classList.remove('hidden');
+    $('#toggle-advanced-lines').classList.remove('hidden');
+    
+    $$('[data-doc-type-card]').forEach((card) => {
+      card.disabled = false;
+      card.classList.remove('unavailable');
+    });
+    
+    $('#document-modal-subtitle').textContent = 'ตรวจสอบและแก้ไขเฉพาะข้อมูลที่สถานะเอกสารอนุญาต';
+  }
+}
+
 function sourceDrivenDocument() {
   return !state.editingDocumentId && selectedSourceInputs().length > 0;
 }
@@ -1168,8 +1216,13 @@ async function openDocumentModal(documentId = null, preferredType = null, prefer
   if (state.editingDocumentId) {
     const result = await request(`/documents/${state.editingDocumentId}`);
     const doc = result.data;
+
+    const hasDependents = doc.relations.some(r => Number(r.source_document_id) === Number(doc.id) && !r.target_deleted_at);
+    state.editingDocumentLocked = doc.status === 'PAID' || hasDependents;
+
     $('#document-modal-title').textContent = `แก้ไข ${doc.document_number}`;
-    $('#document-modal-subtitle').textContent = 'ตรวจสอบและแก้ไขเฉพาะข้อมูลที่สถานะเอกสารอนุญาต';
+    applyFormLockState(state.editingDocumentLocked, doc.status === 'PAID');
+
     $('#save-document').innerHTML = '<i data-lucide="save"></i> ยืนยันการแก้ไข';
     $('#doc-type').value = doc.document_type;
     $('#doc-customer').value = String(doc.customer_id);
@@ -1195,6 +1248,8 @@ async function openDocumentModal(documentId = null, preferredType = null, prefer
     await selectDocumentType(doc.document_type, { loadSources: false, applyDefaults: false });
     setWizardStep(2);
   } else {
+    state.editingDocumentLocked = false;
+    applyFormLockState(false, false);
     resetDocumentFormForCreate();
     $('#document-modal-title').textContent = 'สร้างเอกสารแบบง่าย';
     $('#document-modal-subtitle').textContent = 'เลือกงาน → กรอกรายละเอียด → ตรวจสอบและบันทึก';
@@ -1301,6 +1356,15 @@ function addDocumentLine(lineType = 'item', data = {}) {
     row.classList.remove('dragging');
     updateDocumentPreview();
   });
+  if (state.editingDocumentLocked) {
+    $$('input, select, button', row).forEach((el) => {
+      if (el.classList.contains('remove-line') || el.classList.contains('drag-handle')) {
+        el.style.display = 'none';
+      } else {
+        el.disabled = true;
+      }
+    });
+  }
   $('#document-items').appendChild(row);
   updateDocumentPreview();
   refreshIcons();
