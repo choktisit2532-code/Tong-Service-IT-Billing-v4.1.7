@@ -520,24 +520,9 @@ async function updateRelatedWorkflow(client, target, sources) {
         }
 
         if (target.document_type === 'RC') {
-            if (['QT', 'IN', 'DO'].includes(source.document_type)) {
-                await client.query(
-                    `UPDATE documents
-                     SET status = 'PAID', updated_by = $1
-                     WHERE id = $2
-                       AND status <> 'CANCELLED'
-                       AND deleted_at IS NULL`,
-                    [target.created_by, source.id]
-                );
-
-                if (source.document_type === 'IN') {
-                    const linkedBillingIds = await linkRelatedBillingStatementsToReceipt(client, source.id, target.id);
-                    linkedBillingIds.forEach((id) => billingStatementIdsToRefresh.add(id));
-                }
-            }
-
-            if (source.document_type === 'BN') {
-                await setBillingStatementPaid(client, source.id, target.created_by);
+            if (source.document_type === 'IN') {
+                const linkedBillingIds = await linkRelatedBillingStatementsToReceipt(client, source.id, target.id);
+                linkedBillingIds.forEach((id) => billingStatementIdsToRefresh.add(id));
             }
         }
     }
@@ -816,7 +801,7 @@ async function createDocument({ body, userId }) {
              ) VALUES (
                 $1,
                 $2::varchar(2),
-                CASE WHEN $2::varchar(2) = 'RC' THEN 'PAID' ELSE 'PENDING' END,
+                'PENDING',
                 $3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
                 $19,$20,$21,$22,$23,$24,$25,$26,$27,$27
              ) RETURNING *`,
@@ -1230,6 +1215,49 @@ const allowedTransitions = {
     CANCELLED: []
 };
 
+async function onReceiptPaid(client, receiptId, userId) {
+    const relationsResult = await client.query(
+        `SELECT r.source_document_id, d.document_type
+         FROM document_relations r
+         JOIN documents d ON d.id = r.source_document_id
+         WHERE r.target_document_id = $1 AND r.relation_type = 'PAID_BY'`,
+        [receiptId]
+    );
+    
+    const billingStatementIdsToRefresh = new Set();
+    
+    for (const row of relationsResult.rows) {
+        const sourceId = Number(row.source_document_id);
+        const sourceType = row.document_type;
+        
+        if (['QT', 'IN', 'DO'].includes(sourceType)) {
+            await client.query(
+                `UPDATE documents
+                 SET status = 'PAID', updated_by = $1
+                 WHERE id = $2
+                   AND status <> 'CANCELLED'
+                   AND deleted_at IS NULL`,
+                [userId, sourceId]
+            );
+
+            if (sourceType === 'IN') {
+                const linkedBillingIds = await linkRelatedBillingStatementsToReceipt(client, sourceId, receiptId);
+                linkedBillingIds.forEach((id) => billingStatementIdsToRefresh.add(id));
+            }
+        }
+
+        if (sourceType === 'BN') {
+            await setBillingStatementPaid(client, sourceId, userId);
+        }
+    }
+    
+    if (billingStatementIdsToRefresh.size) {
+        await refreshBillingStatements(client, userId, [...billingStatementIdsToRefresh]);
+    }
+    
+    await refreshBillingStatements(client, userId);
+}
+
 async function updateDocumentStatus({ id, status, userId }) {
     await withTransaction(async (client) => {
         await assertDocumentSchemaReady(client);
@@ -1248,6 +1276,9 @@ async function updateDocumentStatus({ id, status, userId }) {
             throw new AppError(409, `ไม่สามารถเปลี่ยนสถานะจาก ${current.status} เป็น ${status}`, 'INVALID_STATUS_TRANSITION');
         }
         await client.query(`UPDATE documents SET status = $1, updated_by = $2 WHERE id = $3`, [status, userId, id]);
+        if (status === 'PAID' && current.document_type === 'RC') {
+            await onReceiptPaid(client, id, userId);
+        }
         if (current.document_type === 'IN') {
             const bnResult = await client.query(
                 `SELECT target_document_id FROM document_relations

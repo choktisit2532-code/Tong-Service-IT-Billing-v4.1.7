@@ -663,7 +663,7 @@ function documentCapabilities(documentRow) {
     canCancel: !deleted && ((role === 'admin' && ['DRAFT','PENDING','APPROVED','IN_PROGRESS','REJECTED','OVERDUE'].includes(status)) || (role === 'staff' && ['DRAFT','PENDING','APPROVED','IN_PROGRESS'].includes(status))),
     canDelete: !deleted && ((role === 'admin' && ['DRAFT','PENDING','REJECTED','CANCELLED'].includes(status)) || (role === 'staff' && ['DRAFT','PENDING'].includes(status))),
     canRestore: deleted && role === 'admin',
-    canWorkflow: !deleted && ['admin','staff'].includes(role) && documentRow.document_type === 'QT'
+    canWorkflow: !deleted && ['admin','staff'].includes(role) && (documentRow.document_type === 'QT' || (documentRow.document_type === 'RC' && documentRow.status === 'PENDING'))
   };
 }
 
@@ -674,14 +674,19 @@ function actionIcon({ icon, title, data, className = '' }) {
 
 function workflowStatusOptions(documentRow, caps) {
   if (!caps.canWorkflow) return [];
-  if (documentRow.status === 'PENDING') {
-    return [
-      { value: 'APPROVED', label: 'ลูกค้าอนุมัติ' },
-      { value: 'REJECTED', label: 'ลูกค้าไม่อนุมัติ' }
-    ];
+  if (documentRow.document_type === 'QT') {
+    if (documentRow.status === 'PENDING') {
+      return [
+        { value: 'APPROVED', label: 'ลูกค้าอนุมัติ' },
+        { value: 'REJECTED', label: 'ลูกค้าไม่อนุมัติ' }
+      ];
+    }
+    if (documentRow.status === 'APPROVED') {
+      return [{ value: 'IN_PROGRESS', label: 'เริ่มดำเนินงาน' }];
+    }
   }
-  if (documentRow.status === 'APPROVED') {
-    return [{ value: 'IN_PROGRESS', label: 'เริ่มดำเนินงาน' }];
+  if (documentRow.document_type === 'RC' && documentRow.status === 'PENDING') {
+    return [{ value: 'PAID', label: 'ได้รับเงินแล้ว' }];
   }
   return [];
 }
