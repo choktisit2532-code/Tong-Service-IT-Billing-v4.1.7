@@ -180,45 +180,81 @@ function isFinancialOrStructureModified(body, current, dbItems) {
         if (!value) return '';
         try {
             const d = new Date(value);
-            return Number.isFinite(d.getTime()) ? d.toISOString().slice(0, 10) : '';
+            if (!Number.isFinite(d.getTime())) return '';
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
         } catch {
             return '';
         }
     };
 
-    if (Number(body.customer_id) !== Number(current.customer_id)) return true;
-    if (String(body.document_type) !== String(current.document_type)) return true;
-    if (toDateString(body.document_date) !== toDateString(current.document_date)) return true;
-    if (Number(body.discount || 0) !== Number(current.discount || 0)) return true;
+    if (Number(body.customer_id) !== Number(current.customer_id)) {
+        return { modified: true, reason: `customer_id mismatch: body=${body.customer_id} current=${current.customer_id}` };
+    }
+    if (String(body.document_type) !== String(current.document_type)) {
+        return { modified: true, reason: `document_type mismatch: body=${body.document_type} current=${current.document_type}` };
+    }
+    if (toDateString(body.document_date) !== toDateString(current.document_date)) {
+        return { modified: true, reason: `document_date mismatch: body=${toDateString(body.document_date)} current=${toDateString(current.document_date)}` };
+    }
+    if (Number(body.discount || 0) !== Number(current.discount || 0)) {
+        return { modified: true, reason: `discount mismatch: body=${body.discount} current=${current.discount}` };
+    }
     
     if (current.document_type === 'RC') {
         const bodyWithholdingEnabled = Boolean(body.receipt_withholding_enabled);
         const currentWithholdingEnabled = Boolean(current.withholding_is_actual);
-        if (bodyWithholdingEnabled !== currentWithholdingEnabled) return true;
+        if (bodyWithholdingEnabled !== currentWithholdingEnabled) {
+            return { modified: true, reason: `receipt_withholding_enabled mismatch: body=${bodyWithholdingEnabled} current=${currentWithholdingEnabled}` };
+        }
         
-        if (Number(body.receipt_withholding_rate || 0) !== Number(current.withholding_rate || 0)) return true;
-        if (Number(body.receipt_withholding_amount || 0) !== Number(current.withholding_amount || 0)) return true;
-        if (Number(body.receipt_transfer_fee || 0) !== Number(current.transfer_fee || 0)) return true;
+        if (Number(body.receipt_withholding_rate || 0) !== Number(current.withholding_rate || 0)) {
+            return { modified: true, reason: `receipt_withholding_rate mismatch: body=${body.receipt_withholding_rate} current=${current.withholding_rate}` };
+        }
+        if (Number(body.receipt_withholding_amount || 0) !== Number(current.withholding_amount || 0)) {
+            return { modified: true, reason: `receipt_withholding_amount mismatch: body=${body.receipt_withholding_amount} current=${current.withholding_amount}` };
+        }
+        if (Number(body.receipt_transfer_fee || 0) !== Number(current.transfer_fee || 0)) {
+            return { modified: true, reason: `receipt_transfer_fee mismatch: body=${body.receipt_transfer_fee} current=${current.transfer_fee}` };
+        }
     }
     
     const bodyItems = body.items || [];
-    if (bodyItems.length !== dbItems.length) return true;
+    if (bodyItems.length !== dbItems.length) {
+        return { modified: true, reason: `items count mismatch: body=${bodyItems.length} db=${dbItems.length}` };
+    }
     
     for (let i = 0; i < bodyItems.length; i++) {
         const b = bodyItems[i];
         const d = dbItems[i];
-        if (b.line_type !== d.line_type) return true;
-        if (b.line_type === 'item') {
-            if (b.item_type !== d.item_type) return true;
-            if (b.product_id && d.product_id && Number(b.product_id) !== Number(d.product_id)) return true;
-            if (Number(b.quantity || 0) !== Number(d.quantity || 0)) return true;
-            if (Number(b.unit_price || 0) !== Number(d.unit_price || 0)) return true;
-            if (String(b.unit || '') !== String(d.unit || '')) return true;
+        if (b.line_type !== d.line_type) {
+            return { modified: true, reason: `item[${i}] line_type mismatch: body=${b.line_type} db=${d.line_type}` };
         }
-        if (String(b.description || '').trim() !== String(d.description || '').trim()) return true;
+        if (b.line_type === 'item') {
+            if (b.item_type !== d.item_type) {
+                return { modified: true, reason: `item[${i}] item_type mismatch: body=${b.item_type} db=${d.item_type}` };
+            }
+            if (b.product_id && d.product_id && Number(b.product_id) !== Number(d.product_id)) {
+                return { modified: true, reason: `item[${i}] product_id mismatch: body=${b.product_id} db=${d.product_id}` };
+            }
+            if (Number(b.quantity || 0) !== Number(d.quantity || 0)) {
+                return { modified: true, reason: `item[${i}] quantity mismatch: body=${b.quantity} db=${d.quantity}` };
+            }
+            if (Number(b.unit_price || 0) !== Number(d.unit_price || 0)) {
+                return { modified: true, reason: `item[${i}] unit_price mismatch: body=${b.unit_price} db=${d.unit_price}` };
+            }
+            if (String(b.unit || '') !== String(d.unit || '')) {
+                return { modified: true, reason: `item[${i}] unit mismatch: body=${b.unit} db=${d.unit}` };
+            }
+        }
+        if (String(b.description || '').trim() !== String(d.description || '').trim()) {
+            return { modified: true, reason: `item[${i}] description mismatch: body='${b.description}' db='${d.description}'` };
+        }
     }
     
-    return false;
+    return { modified: false };
 }
 
 async function insertItems(client, documentId, items) {
@@ -857,7 +893,8 @@ async function updateDocument({ id, body, userId, role }) {
         const dbItemsResult = await client.query('SELECT * FROM document_items WHERE document_id = $1 ORDER BY sort_order', [id]);
         const dbItems = dbItemsResult.rows;
 
-        const isSafeOnly = !isFinancialOrStructureModified(body, current, dbItems);
+        const checkResult = isFinancialOrStructureModified(body, current, dbItems);
+        const isSafeOnly = !checkResult.modified;
         const isNormalEditable = canEditDocument(role, current.status, current.deleted_at);
 
         let hasActiveDependents = false;
@@ -870,9 +907,9 @@ async function updateDocument({ id, body, userId, role }) {
         if (!isNormalEditable || hasActiveDependents) {
             if (!isSafeOnly) {
                 if (!isNormalEditable) {
-                    throw new AppError(403, 'สถานะเอกสารหรือสิทธิ์ผู้ใช้ไม่อนุญาตให้แก้ไขข้อมูลหลัก', 'DOCUMENT_EDIT_NOT_ALLOWED');
+                    throw new AppError(403, `สถานะเอกสารหรือสิทธิ์ผู้ใช้ไม่อนุญาตให้แก้ไขข้อมูลหลัก (${checkResult.reason})`, 'DOCUMENT_EDIT_NOT_ALLOWED');
                 } else {
-                    throw new AppError(409, 'เอกสารนี้ถูกนำไปสร้างเอกสารอื่นแล้ว ไม่สามารถแก้ไขข้อมูลหลักได้', 'DOCUMENT_HAS_ACTIVE_DEPENDENTS');
+                    throw new AppError(409, `เอกสารนี้ถูกนำไปสร้างเอกสารอื่นแล้ว ไม่สามารถแก้ไขข้อมูลหลักได้ (${checkResult.reason})`, 'DOCUMENT_HAS_ACTIVE_DEPENDENTS');
                 }
             }
         }
