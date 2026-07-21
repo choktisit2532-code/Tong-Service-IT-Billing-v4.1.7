@@ -1,10 +1,24 @@
 @page { size: A4; margin: 0; }
+@font-face {
+  font-family: "TH Sarabun New";
+  src: url("../assets/fonts/sarabun-thai-400-normal.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "TH Sarabun New";
+  src: url("../assets/fonts/sarabun-thai-700-normal.woff2") format("woff2");
+  font-weight: 500 800;
+  font-style: normal;
+  font-display: swap;
+}
 * { box-sizing: border-box; }
 body {
   margin: 0;
   background: #e5e7eb;
   color: #111827;
-  font-family: "Sarabun", sans-serif;
+  font-family: "TH Sarabun New", "Sarabun", Tahoma, sans-serif;
   --doc-soft: #eaf2ff;
   --doc-soft-2: #f5f8ff;
   --doc-strong: #315f9e;
@@ -128,7 +142,15 @@ body {
 .signature-box { border: 1px solid var(--doc-border); min-height: 95px; text-align: center; padding: 7px; display: grid; align-content: space-between; background: #fff; }
 .signature-box strong { color: var(--doc-strong); }
 .signature-box + .signature-box { border-left: 0; }
-.signature-image { max-height: 38px; max-width: 140px; margin: 0 auto; object-fit: contain; }
+.signature-image {
+  max-height: 38px;
+  max-width: 140px;
+  margin: 0 auto;
+  object-fit: contain;
+  position: relative;
+  z-index: 2;
+  transform: translateY(7px);
+}
 
 body.print-monochrome {
   --doc-soft: #eeeeee;

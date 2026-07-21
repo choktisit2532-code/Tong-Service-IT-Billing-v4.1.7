@@ -9,7 +9,7 @@ export function documentStatusLabel(status, documentType) {
     if (documentType === 'QT') return 'รอลูกค้าตัดสินใจ';
     if (documentType === 'DO') return 'ส่งมอบแล้ว / รอชำระ';
     if (documentType === 'IN' || documentType === 'BN') return 'รอชำระ';
-    if (documentType === 'RC') return 'ออกใบเสร็จแล้ว';
+    if (documentType === 'RC') return 'รอยืนยันรับชำระ';
   }
   return STATUS_LABELS[status] || status;
 }
@@ -55,8 +55,14 @@ export function dateThai(value, long = false) {
       : { day:'2-digit', month:'2-digit', year:'numeric' }
   ).format(parsed);
 }
-export function today() { return new Date().toISOString().slice(0,10); }
-export function currentMonth() { return new Date().toISOString().slice(0,7); }
+function bangkokDateParts() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone:'Asia/Bangkok', year:'numeric', month:'2-digit', day:'2-digit'
+  }).formatToParts(new Date());
+  return Object.fromEntries(parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]));
+}
+export function today() { const p = bangkokDateParts(); return `${p.year}-${p.month}-${p.day}`; }
+export function currentMonth() { const p = bangkokDateParts(); return `${p.year}-${p.month}`; }
 export function escapeHtml(value) {
   return String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
 }

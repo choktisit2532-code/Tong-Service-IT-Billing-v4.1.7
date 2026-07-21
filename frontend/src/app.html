@@ -441,9 +441,15 @@
 
           <div class="friendly-form-card">
             <div class="form-grid-3">
-              <label>ลูกค้า<select id="doc-customer" required></select><small id="doc-customer-help" class="field-help">ประเภทลูกค้าจะกำหนดเอกสารที่สร้างได้</small></label>
+              <label>ลูกค้า<select id="doc-customer" required></select><small id="doc-customer-help" class="field-help">ประเภทลูกค้าจะกำหนดเอกสารที่สร้างได้</small><span class="button-group compact-actions"><button id="doc-refresh-customers" class="link-button" type="button">รีเฟรชรายชื่อ</button><button id="doc-toggle-quick-customer" class="link-button" type="button">+ เพิ่มลูกค้าใหม่</button></span></label>
               <label>วันที่เอกสาร<input id="doc-date" type="date" required></label>
+              <label id="doc-term-days-field">กำหนด (วัน)<input id="doc-term-days" type="number" min="0" max="3650" value="15"><small class="field-help">ค่าเริ่มต้น 15 วัน และแก้ไขได้</small></label>
               <label id="doc-due-date-field">วันครบกำหนด<input id="doc-due-date" type="date"><small class="field-help">ใช้กับใบแจ้งหนี้และใบวางบิล</small></label>
+            </div>
+            <div id="doc-quick-customer" class="sub-card hidden">
+              <strong>เพิ่มลูกค้าโดยไม่ออกจากเอกสาร</strong>
+              <div class="form-grid-3"><label>ชื่อลูกค้า<input id="doc-new-customer-name" maxlength="180"></label><label>ประเภท<select id="doc-new-customer-type"><option value="general">บุคคลทั่วไป</option><option value="private">บริษัทเอกชน</option><option value="government">หน่วยงานราชการ</option></select></label><label>โทรศัพท์<input id="doc-new-customer-phone" maxlength="40"></label></div>
+              <div class="button-group"><button id="doc-save-quick-customer" class="btn btn-secondary btn-small" type="button">บันทึกและเลือกลูกค้านี้</button><button id="doc-cancel-quick-customer" class="btn btn-ghost btn-small" type="button">ยกเลิก</button></div>
             </div>
             <div id="document-flow-hint" class="workflow-hint"><i data-lucide="sparkles"></i><div><strong>ขั้นตอนแนะนำ</strong><span>ใบเสนอราคา → รับชำระและออกใบเสร็จ</span></div></div>
           </div>

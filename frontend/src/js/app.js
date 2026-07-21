@@ -14,11 +14,14 @@ const state = {
   user: null,
   settings: null,
   customers: [],
+  documentCustomers: [],
   products: [],
   currentView: 'dashboard',
   dashboardAnalytics: null,
   reportChartData: null,
   editingDocumentId: null,
+  editingOriginalCustomerId: null,
+  editingMetadataOnly: false,
   documentWizardStep: 1,
   documentsTrashMode: false,
   customerStatus: 'active',
@@ -412,6 +415,7 @@ async function loadInitialData() {
   state.user = me.user;
   state.settings = settings.data;
   state.customers = customers.data;
+  state.documentCustomers = Array.isArray(customers.data) ? customers.data : [];
   state.products = products.data;
   applyRole();
   applyBrand();
@@ -555,9 +559,34 @@ async function loadDashboard() {
   refreshIcons();
 }
 
+function isActiveRecord(record) {
+  const value = record?.active;
+  if (value === true || value === 1) return true;
+  if (typeof value === 'string') return ['true', 't', '1', 'yes'].includes(value.trim().toLowerCase());
+  return false;
+}
+
 function renderCustomerOptions() {
   const select = $('#doc-customer');
-  select.innerHTML = '<option value="">เลือกลูกค้า</option>' + state.customers.filter((c) => c.active).map((c) => `<option value="${c.id}">${escapeHtml(c.name)} · ${CUSTOMER_TYPE_LABELS[c.customer_type]}</option>`).join('');
+  const customers = state.documentCustomers.length ? state.documentCustomers : state.customers;
+  const activeCustomers = customers.filter(isActiveRecord);
+  const inactiveCustomers = customers.filter((customer) => !isActiveRecord(customer));
+  select.innerHTML = '<option value="">เลือกลูกค้า</option>'
+    + activeCustomers.map((c) => `<option value="${c.id}">${escapeHtml(c.name)} · ${CUSTOMER_TYPE_LABELS[c.customer_type] || c.customer_type || '-'}</option>`).join('')
+    + (!activeCustomers.length && inactiveCustomers.length
+      ? '<option value="" disabled>ไม่มีลูกค้าที่เปิดใช้งาน — กรุณากู้คืนในเมนูข้อมูลลูกค้า</option>'
+        + inactiveCustomers.map((c) => `<option value="" disabled>${escapeHtml(c.name)} (ปิดใช้งาน)</option>`).join('')
+      : '');
+}
+
+async function refreshDocumentCustomers(selectedId = $('#doc-customer')?.value || '') {
+  const result = await request('/customers?limit=200&page=1&status=all');
+  state.documentCustomers = Array.isArray(result.data) ? result.data : [];
+  renderCustomerOptions();
+  if (selectedId && state.documentCustomers.some((customer) => isActiveRecord(customer) && String(customer.id) === String(selectedId))) {
+    $('#doc-customer').value = String(selectedId);
+  }
+  updateAllowedDocumentTypes();
 }
 
 async function loadCustomers(search = '') {
@@ -568,10 +597,11 @@ async function loadCustomers(search = '') {
   state.customers = result.data;
   $('#customer-count').textContent = `${result.pagination.total} รายการ`;
   $('#customers-table').innerHTML = result.data.length ? result.data.map((c) => {
-    const actions = c.active
+    const active = isActiveRecord(c);
+    const actions = active
       ? `${state.user.role !== 'viewer' ? actionIcon({icon:'pencil',title:'แก้ไขลูกค้า',data:{'customer-edit':c.id},className:'action-edit'}) : ''}${state.user.role === 'admin' ? actionIcon({icon:'user-x',title:'ปิดใช้งานลูกค้า',data:{'customer-deactivate':c.id},className:'action-danger'}) : ''}`
       : `${state.user.role === 'admin' ? actionIcon({icon:'rotate-ccw',title:'กู้คืนลูกค้า',data:{'customer-restore':c.id},className:'action-success'}) : ''}`;
-    return `<tr class="${c.active ? '' : 'deleted-row'}"><td><strong>${escapeHtml(c.name)}</strong><br><small>${escapeHtml(c.code || '')}</small></td><td>${CUSTOMER_TYPE_LABELS[c.customer_type]}</td><td>${escapeHtml(c.tax_id || '-')}</td><td>${escapeHtml(c.phone || '-')}</td><td>${c.withholding_enabled ? `${Number(c.withholding_rate)}% · ${c.withholding_basis === 'service' ? 'เฉพาะบริการ' : 'ยอดรวม'}` : 'ไม่หัก'}</td><td><span class="status-badge ${c.active ? 'status-PAID' : 'status-CANCELLED'}">${c.active ? 'ใช้งาน' : 'ปิดใช้งาน'}</span></td><td><div class="table-actions">${actions}</div></td></tr>`;
+    return `<tr class="${active ? '' : 'deleted-row'}"><td><strong>${escapeHtml(c.name)}</strong><br><small>${escapeHtml(c.code || '')}</small></td><td>${CUSTOMER_TYPE_LABELS[c.customer_type]}</td><td>${escapeHtml(c.tax_id || '-')}</td><td>${escapeHtml(c.phone || '-')}</td><td>${c.withholding_enabled ? `${Number(c.withholding_rate)}% · ${c.withholding_basis === 'service' ? 'เฉพาะบริการ' : 'ยอดรวม'}` : 'ไม่หัก'}</td><td><span class="status-badge ${active ? 'status-PAID' : 'status-CANCELLED'}">${active ? 'ใช้งาน' : 'ปิดใช้งาน'}</span></td><td><div class="table-actions">${actions}</div></td></tr>`;
   }).join('') : tableEmpty(7, 'users-round', search ? 'ไม่พบลูกค้าที่ค้นหา' : 'ยังไม่มีข้อมูลลูกค้า', search ? 'ลองเปลี่ยนคำค้นหาหรือสถานะที่เลือก' : 'เริ่มจากเพิ่มลูกค้ารายแรกเพื่อออกเอกสาร', state.user.role !== 'viewer' ? `<button class="link-button" type="button" onclick="document.getElementById('customer-name').focus()">เพิ่มลูกค้า</button>` : '');
   bindMasterDataButtons(); renderCustomerOptions(); refreshIcons();
 }
@@ -660,10 +690,11 @@ function documentCapabilities(documentRow) {
   const deleted = Boolean(documentRow.deleted_at);
   return {
     canEdit: !deleted && ((role === 'admin' && ['DRAFT','PENDING','APPROVED','IN_PROGRESS','OVERDUE'].includes(status)) || (role === 'staff' && ['DRAFT','PENDING','APPROVED','IN_PROGRESS'].includes(status))),
-    canCancel: !deleted && ((role === 'admin' && ['DRAFT','PENDING','APPROVED','IN_PROGRESS','REJECTED','OVERDUE'].includes(status)) || (role === 'staff' && ['DRAFT','PENDING','APPROVED','IN_PROGRESS'].includes(status))),
-    canDelete: !deleted && ((role === 'admin' && ['DRAFT','PENDING','REJECTED','CANCELLED'].includes(status)) || (role === 'staff' && ['DRAFT','PENDING'].includes(status))),
+    canEditMetadata: !deleted && role === 'admin' && ['PAID','CANCELLED','REJECTED'].includes(status),
+    canCancel: !deleted && ((role === 'admin' && ['DRAFT','PENDING','APPROVED','IN_PROGRESS','REJECTED','OVERDUE','PAID'].includes(status)) || (role === 'staff' && ['DRAFT','PENDING','APPROVED','IN_PROGRESS'].includes(status))),
+    canDelete: !deleted && ((role === 'admin' && ['DRAFT','PENDING','APPROVED','IN_PROGRESS','REJECTED','OVERDUE','PAID','CANCELLED'].includes(status)) || (role === 'staff' && ['DRAFT','PENDING'].includes(status))),
     canRestore: deleted && role === 'admin',
-    canWorkflow: !deleted && ['admin','staff'].includes(role) && (documentRow.document_type === 'QT' || (documentRow.document_type === 'RC' && documentRow.status === 'PENDING'))
+    canWorkflow: !deleted && ['admin','staff'].includes(role) && documentRow.document_type === 'QT'
   };
 }
 
@@ -673,20 +704,18 @@ function actionIcon({ icon, title, data, className = '' }) {
 }
 
 function workflowStatusOptions(documentRow, caps) {
-  if (!caps.canWorkflow) return [];
-  if (documentRow.document_type === 'QT') {
-    if (documentRow.status === 'PENDING') {
-      return [
-        { value: 'APPROVED', label: 'ลูกค้าอนุมัติ' },
-        { value: 'REJECTED', label: 'ลูกค้าไม่อนุมัติ' }
-      ];
-    }
-    if (documentRow.status === 'APPROVED') {
-      return [{ value: 'IN_PROGRESS', label: 'เริ่มดำเนินงาน' }];
-    }
+  if (!documentRow.deleted_at && ['admin','staff'].includes(state.user?.role) && documentRow.document_type === 'RC' && documentRow.status === 'PENDING') {
+    return [{ value: 'PAID', label: 'ยืนยันรับชำระ' }];
   }
-  if (documentRow.document_type === 'RC' && documentRow.status === 'PENDING') {
-    return [{ value: 'PAID', label: 'ได้รับเงินแล้ว' }];
+  if (!caps.canWorkflow) return [];
+  if (documentRow.status === 'PENDING') {
+    return [
+      { value: 'APPROVED', label: 'ลูกค้าอนุมัติ' },
+      { value: 'REJECTED', label: 'ลูกค้าไม่อนุมัติ' }
+    ];
+  }
+  if (documentRow.status === 'APPROVED') {
+    return [{ value: 'IN_PROGRESS', label: 'เริ่มดำเนินงาน' }];
   }
   return [];
 }
@@ -706,6 +735,7 @@ function renderDocumentActions(d) {
   }
   actions.push(actionIcon({ icon:'history', title:'ดูประวัติการเปลี่ยนแปลง', data:{ 'audit-id':d.id } }));
   if (caps.canEdit) actions.push(actionIcon({ icon:'pencil', title:'แก้ไขเอกสาร', data:{ 'edit-id':d.id }, className:'action-edit' }));
+  if (caps.canEditMetadata) actions.push(actionIcon({ icon:'file-pen-line', title:'แก้ไขวันครบกำหนด หมายเหตุ หรือลายเซ็น', data:{ 'metadata-id':d.id }, className:'action-edit' }));
   const statusOptions = workflowStatusOptions(d, caps);
   if (statusOptions.length) actions.push(statusActionSelect(d.id, statusOptions));
   if (caps.canCancel) actions.push(actionIcon({ icon:'file-x-2', title:'ยกเลิกเอกสาร', data:{ 'cancel-id':d.id }, className:'action-warning' }));
@@ -832,6 +862,7 @@ function bindDynamicDocumentButtons() {
   $$('[data-view-id]').forEach((button) => button.addEventListener('click', () => window.open(`./print.html?id=${button.dataset.viewId}`, '_blank', 'noopener')));
   $$('[data-print-id]').forEach((button) => button.addEventListener('click', () => window.open(`./print.html?id=${button.dataset.printId}`, '_blank', 'noopener')));
   $$('[data-edit-id]').forEach((button) => button.addEventListener('click', () => openDocumentModal(Number(button.dataset.editId)).catch(showGlobalError)));
+  $$('[data-metadata-id]').forEach((button) => button.addEventListener('click', () => openDocumentModal(Number(button.dataset.metadataId), null, null, true).catch(showGlobalError)));
   $$('[data-next-type]').forEach((button) => button.addEventListener('click', () => openDocumentModal(null, button.dataset.nextType, Number(button.dataset.nextSource)).catch(showGlobalError)));
   $$('[data-audit-id]').forEach((button) => button.addEventListener('click', () => openAuditModal(Number(button.dataset.auditId))));
   $$('[data-status-id]').forEach((button) => button.addEventListener('click', async () => {
@@ -873,6 +904,29 @@ function bindDynamicDocumentButtons() {
     } catch (error) { showGlobalError(error); }
   }));
   $$('[data-delete-id]').forEach((button) => button.addEventListener('click', async () => {
+    let impact;
+    try {
+      ({ data: impact } = await request(`/documents/${button.dataset.deleteId}/impact`));
+    } catch (error) {
+      return showGlobalError(error);
+    }
+    const documentId = Number(button.dataset.deleteId);
+    const activeTargets = (impact.relations || []).filter((relation) =>
+      Number(relation.source_id) === documentId
+      && !relation.target_deleted_at
+      && relation.target_status !== 'CANCELLED'
+    );
+    if (activeTargets.length) {
+      const numbers = activeTargets.map((relation) => relation.target_number).join(', ');
+      return showGlobalError(new Error(`ยังลบไม่ได้ เพราะเอกสารนี้ถูกนำไปสร้างเอกสารต่อแล้ว: ${numbers} กรุณายกเลิกหรือลบเอกสารปลายทางก่อน`));
+    }
+    const activeSources = (impact.relations || []).filter((relation) =>
+      Number(relation.target_id) === documentId && !relation.source_deleted_at
+    );
+    if (activeSources.length) {
+      const numbers = activeSources.map((relation) => relation.source_number).join(', ');
+      if (!confirm(`เอกสารนี้เชื่อมกับ ${numbers} การลบจะทำให้ระบบคำนวณสถานะเอกสารต้นทางใหม่ ต้องการดำเนินการต่อหรือไม่?`)) return;
+    }
     const reason = await promptReason('กรุณาระบุเหตุผลในการลบเอกสาร', 'สร้างเอกสารผิดหรือข้อมูลซ้ำ');
     if (!reason) return;
     try {
@@ -928,7 +982,41 @@ const allowedTypesByCustomer = {
   government: ['QT','RC','DO']
 };
 function selectedCustomer() {
-  return state.customers.find((customer) => String(customer.id) === $('#doc-customer').value);
+  return state.documentCustomers.find((customer) => String(customer.id) === $('#doc-customer').value)
+    || state.customers.find((customer) => String(customer.id) === $('#doc-customer').value);
+}
+
+function parseCustomerSnapshot(value) {
+  if (!value) return {};
+  if (typeof value === 'object') return value;
+  try { return JSON.parse(value); } catch { return {}; }
+}
+
+function preserveEditingDocumentCustomer(doc) {
+  const customerId = Number(doc?.customer_id);
+  state.editingOriginalCustomerId = Number.isInteger(customerId) && customerId > 0 ? customerId : null;
+  if (!state.editingOriginalCustomerId) return;
+
+  const exists = state.documentCustomers.some((customer) => Number(customer.id) === customerId);
+  if (!exists) {
+    const snapshot = parseCustomerSnapshot(doc.customer_snapshot);
+    state.documentCustomers.push({
+      id: customerId,
+      name: doc.customer_name || snapshot.name || `ลูกค้ารหัส ${customerId}`,
+      customer_type: snapshot.customer_type || 'general',
+      active: true,
+      document_snapshot: true
+    });
+    renderCustomerOptions();
+  }
+  $('#doc-customer').value = String(customerId);
+}
+
+function documentCustomerId() {
+  const selectedId = Number($('#doc-customer').value);
+  if (Number.isInteger(selectedId) && selectedId > 0) return selectedId;
+  if (state.editingDocumentId && state.editingOriginalCustomerId) return state.editingOriginalCustomerId;
+  return null;
 }
 
 const documentFlowCopy = {
@@ -968,54 +1056,6 @@ function selectedSourceInputs() {
 
 function selectedSourceTotal() {
   return selectedSourceInputs().reduce((sum, input) => sum + (Number(input.dataset.total) || 0), 0);
-}
-
-function applyFormLockState(locked, isPaid) {
-  $('#doc-customer').disabled = locked;
-  $('#doc-date').disabled = locked;
-  $('#doc-discount').disabled = locked;
-  $('#doc-payment-terms').disabled = locked;
-  $('#doc-delivery-days').disabled = locked;
-  $('#doc-validity-days').disabled = locked;
-  
-  $('#doc-receipt-withholding-enabled').disabled = locked;
-  $('#doc-receipt-withholding-rate').disabled = locked;
-  $('#doc-receipt-withholding-amount').disabled = locked;
-  $('#doc-receipt-transfer-fee').disabled = locked;
-  $('#doc-payment-received-date').disabled = locked;
-  
-  $('#doc-due-date').disabled = isPaid;
-
-  $('#add-item').disabled = locked;
-  $('#add-section').disabled = locked;
-  $('#add-note').disabled = locked;
-  
-  if (locked) {
-    $('#add-item').classList.add('hidden');
-    $('#add-section').classList.add('hidden');
-    $('#add-note').classList.add('hidden');
-    $('#toggle-advanced-lines').classList.add('hidden');
-    $('#advanced-line-actions').classList.add('hidden');
-    
-    $$('[data-doc-type-card]').forEach((card) => {
-      card.disabled = true;
-      card.classList.add('unavailable');
-    });
-    
-    $('#document-modal-subtitle').innerHTML = `<span style="color:var(--warning); font-weight:bold;"><i data-lucide="lock" style="display:inline-block; width:14px; height:14px; vertical-align:middle; margin-right:4px;"></i> เอกสารนี้ถูกชำระแล้วหรือถูกใช้วางบิลแล้ว สามารถแก้ไขได้เฉพาะลายเซ็นต์ วันครบกำหนด หรือหมายเหตุเท่านั้น</span>`;
-  } else {
-    $('#add-item').classList.remove('hidden');
-    $('#add-section').classList.remove('hidden');
-    $('#add-note').classList.remove('hidden');
-    $('#toggle-advanced-lines').classList.remove('hidden');
-    
-    $$('[data-doc-type-card]').forEach((card) => {
-      card.disabled = false;
-      card.classList.remove('unavailable');
-    });
-    
-    $('#document-modal-subtitle').textContent = 'ตรวจสอบและแก้ไขเฉพาะข้อมูลที่สถานะเอกสารอนุญาต';
-  }
 }
 
 function sourceDrivenDocument() {
@@ -1070,6 +1110,7 @@ function updateAdaptiveDocumentFields() {
   $('#wizard-details-title').textContent = title;
   $('#wizard-details-description').textContent = description;
   $('#doc-due-date-field').classList.toggle('hidden', !['IN', 'BN'].includes(type));
+  $('#doc-term-days-field').classList.toggle('hidden', !['QT', 'BN'].includes(type));
   $('#preview-total-label').textContent = type === 'RC'
     ? 'จำนวนเงินที่ได้รับจริง'
     : type === 'BN'
@@ -1118,6 +1159,11 @@ async function selectDocumentType(type, { loadSources = true, applyDefaults = tr
   $('#doc-type').value = type;
   $$('[data-doc-type-card]').forEach((item) => item.classList.toggle('selected', item.dataset.docTypeCard === type));
   updateAdaptiveDocumentFields();
+  if (applyDefaults && !state.editingDocumentId) {
+    if (['QT','BN'].includes(type)) $('#doc-term-days').value = '15';
+    if (type === 'QT' && !$('#doc-validity-days').value) $('#doc-validity-days').value = '15';
+    if (type === 'BN' && !$('#doc-due-date').value) $('#doc-due-date').value = addDaysToInputDate($('#doc-date').value, 15);
+  }
   if (type !== 'RC') {
     $('#doc-receipt-withholding-enabled').checked = false;
     $('#doc-receipt-withholding-amount').value = '';
@@ -1131,6 +1177,20 @@ async function selectDocumentType(type, { loadSources = true, applyDefaults = tr
 function toDateInputValue(value) {
   if (!value) return '';
   return String(value).slice(0, 10);
+}
+
+function addDaysToInputDate(value, days) {
+  if (!value) return '';
+  const date = new Date(`${value}T12:00:00`);
+  date.setDate(date.getDate() + Number(days || 0));
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function daysBetweenInputDates(start, end) {
+  if (!start || !end) return 15;
+  const startDate = new Date(`${String(start).slice(0, 10)}T12:00:00`);
+  const endDate = new Date(`${String(end).slice(0, 10)}T12:00:00`);
+  return Math.max(Math.round((endDate - startDate) / 86400000), 0);
 }
 
 function resetDocumentFormForCreate() {
@@ -1150,6 +1210,7 @@ function resetDocumentFormForCreate() {
   $('#doc-payment-terms').value = '';
   $('#doc-delivery-days').value = '';
   $('#doc-validity-days').value = '';
+  $('#doc-term-days').value = '15';
   $('#doc-show-signature').checked = false;
   updateSignatureOptionAvailability();
   for (let index = 0; index < 5; index += 1) addDocumentLine('item');
@@ -1210,9 +1271,13 @@ function confirmCloseDocumentModal() {
   return true;
 }
 
-async function openDocumentModal(documentId = null, preferredType = null, preferredSourceId = null) {
+async function openDocumentModal(documentId = null, preferredType = null, preferredSourceId = null, metadataOnly = false) {
   state.editingDocumentId = documentId ? Number(documentId) : null;
+  state.editingOriginalCustomerId = null;
+  state.editingMetadataOnly = Boolean(metadataOnly);
   state.documentWizardStep = 1;
+  await refreshDocumentCustomers();
+  $$('#document-form input, #document-form select, #document-form textarea, #document-form button').forEach((element) => { element.disabled = false; });
   $('#document-form').reset();
   $('#document-items').innerHTML = '';
   $('#source-documents-list').innerHTML = '';
@@ -1221,23 +1286,11 @@ async function openDocumentModal(documentId = null, preferredType = null, prefer
   if (state.editingDocumentId) {
     const result = await request(`/documents/${state.editingDocumentId}`);
     const doc = result.data;
-
-    const hasDependents = doc.relations.some(r => Number(r.source_document_id) === Number(doc.id) && !r.target_deleted_at);
-    state.editingDocumentLocked = doc.status === 'PAID' || hasDependents;
-
     $('#document-modal-title').textContent = `แก้ไข ${doc.document_number}`;
-    applyFormLockState(state.editingDocumentLocked, doc.status === 'PAID');
-
+    $('#document-modal-subtitle').textContent = 'ตรวจสอบและแก้ไขเฉพาะข้อมูลที่สถานะเอกสารอนุญาต';
     $('#save-document').innerHTML = '<i data-lucide="save"></i> ยืนยันการแก้ไข';
     $('#doc-type').value = doc.document_type;
-    const customerSelect = $('#doc-customer');
-    if (doc.customer_id && !customerSelect.querySelector(`option[value="${doc.customer_id}"]`)) {
-      const option = document.createElement('option');
-      option.value = String(doc.customer_id);
-      option.textContent = `${doc.customer_snapshot?.name || doc.customer_name || 'ลูกค้า'} (คงเดิม)`;
-      customerSelect.appendChild(option);
-    }
-    $('#doc-customer').value = String(doc.customer_id);
+    preserveEditingDocumentCustomer(doc);
     $('#doc-date').value = toDateInputValue(doc.document_date);
     $('#doc-due-date').value = toDateInputValue(doc.due_date);
     $('#doc-discount').value = doc.discount ?? 0;
@@ -1245,6 +1298,9 @@ async function openDocumentModal(documentId = null, preferredType = null, prefer
     $('#doc-payment-terms').value = doc.payment_terms || '';
     $('#doc-delivery-days').value = doc.delivery_days ?? '';
     $('#doc-validity-days').value = doc.quotation_validity_days ?? '';
+    $('#doc-term-days').value = doc.document_type === 'QT'
+      ? (doc.quotation_validity_days ?? 15)
+      : (doc.document_type === 'BN' && doc.due_date ? daysBetweenInputDates(doc.document_date, doc.due_date) : 15);
     $('#doc-receipt-withholding-enabled').checked = Boolean(doc.withholding_is_actual) && Number(doc.withholding_amount || 0) > 0;
     $('#doc-receipt-withholding-rate').value = doc.withholding_rate ?? 0;
     $('#doc-receipt-withholding-amount').value = doc.withholding_amount ?? 0;
@@ -1258,10 +1314,14 @@ async function openDocumentModal(documentId = null, preferredType = null, prefer
     $('#source-documents-box').classList.add('hidden');
     updateAllowedDocumentTypes();
     await selectDocumentType(doc.document_type, { loadSources: false, applyDefaults: false });
+    if (state.editingMetadataOnly) {
+      $('#document-modal-subtitle').textContent = 'แก้ไขเฉพาะวันครบกำหนด เงื่อนไข หมายเหตุ และลายเซ็น โดยไม่เปลี่ยนยอดเงิน';
+      $('#save-document').innerHTML = '<i data-lucide="save"></i> บันทึกข้อมูลประกอบ';
+      $$('#document-form input, #document-form select, #document-form textarea, #document-form button').forEach((element) => { element.disabled = true; });
+      ['#doc-due-date','#doc-term-days','#doc-remarks','#doc-payment-terms','#doc-validity-days','#doc-show-signature','#save-document','#wizard-back','#wizard-next'].forEach((selector) => { const element = $(selector); if (element) element.disabled = false; });
+    }
     setWizardStep(2);
   } else {
-    state.editingDocumentLocked = false;
-    applyFormLockState(false, false);
     resetDocumentFormForCreate();
     $('#document-modal-title').textContent = 'สร้างเอกสารแบบง่าย';
     $('#document-modal-subtitle').textContent = 'เลือกงาน → กรอกรายละเอียด → ตรวจสอบและบันทึก';
@@ -1297,6 +1357,8 @@ function closeDocumentModal(options = {}) {
   $('#document-modal').classList.add('hidden');
   document.body.style.overflow = '';
   state.editingDocumentId = null;
+  state.editingOriginalCustomerId = null;
+  state.editingMetadataOnly = false;
   state.documentWizardStep = 1;
   state.documentModalInitialState = null;
   return true;
@@ -1368,15 +1430,6 @@ function addDocumentLine(lineType = 'item', data = {}) {
     row.classList.remove('dragging');
     updateDocumentPreview();
   });
-  if (state.editingDocumentLocked) {
-    $$('input, select, button', row).forEach((el) => {
-      if (el.classList.contains('remove-line') || el.classList.contains('drag-handle')) {
-        el.style.display = 'none';
-      } else {
-        el.disabled = true;
-      }
-    });
-  }
   $('#document-items').appendChild(row);
   updateDocumentPreview();
   refreshIcons();
@@ -1484,6 +1537,46 @@ $('#doc-date').addEventListener('change', () => {
   if ($('#doc-type').value === 'RC' && !$('#doc-payment-received-date').value) {
     $('#doc-payment-received-date').value = $('#doc-date').value;
   }
+  if (!state.editingDocumentId && $('#doc-type').value === 'BN') {
+    $('#doc-due-date').value = addDaysToInputDate($('#doc-date').value, $('#doc-term-days').value || 15);
+  }
+});
+
+$('#doc-term-days').addEventListener('input', () => {
+  const days = Math.max(Number($('#doc-term-days').value) || 0, 0);
+  if ($('#doc-type').value === 'QT') $('#doc-validity-days').value = String(days);
+  if ($('#doc-type').value === 'BN') $('#doc-due-date').value = addDaysToInputDate($('#doc-date').value, days);
+});
+$('#doc-validity-days').addEventListener('input', () => {
+  if ($('#doc-type').value === 'QT') $('#doc-term-days').value = $('#doc-validity-days').value || '0';
+});
+$('#doc-due-date').addEventListener('change', () => {
+  if ($('#doc-type').value === 'BN') $('#doc-term-days').value = String(daysBetweenInputDates($('#doc-date').value, $('#doc-due-date').value));
+});
+
+$('#doc-refresh-customers').addEventListener('click', () => refreshDocumentCustomers().then(() => showToast('อัปเดตรายชื่อลูกค้าแล้ว')).catch(showGlobalError));
+$('#doc-toggle-quick-customer').addEventListener('click', () => $('#doc-quick-customer').classList.remove('hidden'));
+$('#doc-cancel-quick-customer').addEventListener('click', () => $('#doc-quick-customer').classList.add('hidden'));
+$('#doc-save-quick-customer').addEventListener('click', async () => {
+  const name = $('#doc-new-customer-name').value.trim();
+  if (!name) return showToast('กรุณาระบุชื่อลูกค้า', 'warning');
+  try {
+    const result = await request('/customers', { method:'POST', body:JSON.stringify({
+      name,
+      customer_type: $('#doc-new-customer-type').value,
+      phone: $('#doc-new-customer-phone').value.trim(),
+      withholding_enabled:false,
+      withholding_rate:3,
+      withholding_basis:'full',
+      withholding_threshold:0,
+      receipt_transfer_fee:0
+    }) });
+    await refreshDocumentCustomers(result.data.id);
+    $('#doc-quick-customer').classList.add('hidden');
+    $('#doc-new-customer-name').value = '';
+    $('#doc-new-customer-phone').value = '';
+    showToast('เพิ่มและเลือกลูกค้าใหม่แล้ว');
+  } catch (error) { showGlobalError(error); }
 });
 
 function sourceSelectionCopy(type) {
@@ -1588,6 +1681,9 @@ function reviewRow(label, value, strong = false) {
 function renderDocumentReview() {
   const type = $('#doc-type').value;
   const customer = selectedCustomer();
+  const originalCustomer = state.editingDocumentId && state.editingOriginalCustomerId
+    ? state.documentCustomers.find((item) => Number(item.id) === state.editingOriginalCustomerId)
+    : null;
   const sources = selectedSourceInputs();
   const items = collectDocumentItems();
   const sourceNames = sources.map((input) => $('.source-document-copy strong', input.closest('label'))?.textContent || input.value);
@@ -1602,7 +1698,7 @@ function renderDocumentReview() {
     <div class="review-grid">
       <section class="review-card review-primary"><h4><i data-lucide="file-check-2"></i> เอกสาร</h4>
         ${reviewRow('ประเภท', DOC_LABELS[type], true)}
-        ${reviewRow('ลูกค้า', customer?.name || '-')}
+        ${reviewRow('ลูกค้า', customer?.name || originalCustomer?.name || '-')}
         ${reviewRow('วันที่เอกสาร', dateThai($('#doc-date').value))}
         ${['IN', 'BN'].includes(type) ? reviewRow('ครบกำหนด', $('#doc-due-date').value ? dateThai($('#doc-due-date').value) : 'ไม่ระบุ') : ''}
       </section>
@@ -1644,12 +1740,18 @@ $('#document-form').addEventListener('submit', async (event) => {
   }
   setBusy(button, true);
   try {
+    const customerId = documentCustomerId();
+    if (!customerId) {
+      setWizardStep(1);
+      showDocumentFormError('ไม่พบรหัสลูกค้าของเอกสาร กรุณาเลือกลูกค้าก่อนบันทึก');
+      return;
+    }
     const sourceIds = state.editingDocumentId ? [] : selectedSourceInputs().map((input) => Number(input.value));
     const payload = {
       document_type: $('#doc-type').value,
       document_date: $('#doc-date').value,
       due_date: $('#doc-due-date').value || null,
-      customer_id: Number($('#doc-customer').value),
+      customer_id: customerId,
       discount: $('#doc-discount').value || 0,
       remarks: $('#doc-remarks').value,
       payment_terms: $('#doc-payment-terms').value,
@@ -1670,10 +1772,19 @@ $('#document-form').addEventListener('submit', async (event) => {
     if (!state.editingDocumentId) payload.source_document_ids = sourceIds;
 
     const editingId = state.editingDocumentId;
-    const result = await request(editingId ? `/documents/${editingId}` : '/documents', {
-      method: editingId ? 'PUT' : 'POST',
-      body: JSON.stringify(payload)
-    });
+    const metadataOnly = state.editingMetadataOnly;
+    const result = metadataOnly
+      ? await request(`/documents/${editingId}/metadata`, { method:'PATCH', body:JSON.stringify({
+          due_date: payload.due_date,
+          remarks: payload.remarks,
+          payment_terms: payload.payment_terms,
+          quotation_validity_days: payload.quotation_validity_days,
+          show_signature: payload.show_signature
+        }) })
+      : await request(editingId ? `/documents/${editingId}` : '/documents', {
+          method: editingId ? 'PUT' : 'POST',
+          body: JSON.stringify(payload)
+        });
     closeDocumentModal({ force: true });
     showToast(editingId ? `แก้ไข ${result.data.document_number} สำเร็จ` : `สร้าง ${result.data.document_number} สำเร็จ`);
     await Promise.all([loadDashboard(), loadDocuments()]);
@@ -1681,7 +1792,7 @@ $('#document-form').addEventListener('submit', async (event) => {
       window.open(`./print.html?id=${result.data.id}`, '_blank', 'noopener');
     }
   } catch (error) {
-    const detail = error.details?.length ? `: ${error.details.map((item) => (item.path ? `${item.path}: ` : '') + item.message).join(', ')}` : '';
+    const detail = error.details?.length ? `: ${error.details.map((item) => item.message).join(', ')}` : '';
     showDocumentFormError(`${error.message}${detail}`);
   } finally {
     setBusy(button, false);
