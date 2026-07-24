@@ -1318,7 +1318,7 @@ async function openDocumentModal(documentId = null, preferredType = null, prefer
       $('#document-modal-subtitle').textContent = 'แก้ไขเฉพาะวันครบกำหนด เงื่อนไข หมายเหตุ และลายเซ็น โดยไม่เปลี่ยนยอดเงิน';
       $('#save-document').innerHTML = '<i data-lucide="save"></i> บันทึกข้อมูลประกอบ';
       $$('#document-form input, #document-form select, #document-form textarea, #document-form button').forEach((element) => { element.disabled = true; });
-      ['#doc-due-date','#doc-term-days','#doc-remarks','#doc-payment-terms','#doc-validity-days','#doc-show-signature','#save-document','#wizard-back','#wizard-next'].forEach((selector) => { const element = $(selector); if (element) element.disabled = false; });
+      ['#doc-date','#doc-due-date','#doc-term-days','#doc-remarks','#doc-payment-terms','#doc-validity-days','#doc-show-signature','#save-document','#wizard-back','#wizard-next'].forEach((selector) => { const element = $(selector); if (element) element.disabled = false; });
     }
     setWizardStep(2);
   } else {

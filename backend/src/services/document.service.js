@@ -196,9 +196,6 @@ function isFinancialOrStructureModified(body, current, dbItems) {
     if (String(body.document_type) !== String(current.document_type)) {
         return { modified: true, reason: `document_type mismatch: body=${body.document_type} current=${current.document_type}` };
     }
-    if (toDateString(body.document_date) !== toDateString(current.document_date)) {
-        return { modified: true, reason: `document_date mismatch: body=${toDateString(body.document_date)} current=${toDateString(current.document_date)}` };
-    }
     if (Number(body.discount || 0) !== Number(current.discount || 0)) {
         return { modified: true, reason: `discount mismatch: body=${body.discount} current=${current.discount}` };
     }
