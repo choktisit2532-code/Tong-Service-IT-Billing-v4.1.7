@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>พิมพ์เอกสาร</title>
+  <link rel="icon" type="image/svg+xml" href="./assets/logo-placeholder.svg">
+  <link rel="stylesheet" href="./css/print.css">
+</head>
+<body>
+  <div class="print-toolbar">
+    <span id="page-count" class="page-count">กำลังคำนวณหน้า A4…</span>
+    <label>รูปแบบสี <select id="print-mode-select"><option value="color">สีอ่อนตามประเภทเอกสาร</option><option value="mono">ขาวดำ</option></select></label>
+    <button id="excel-button" class="excel-button" type="button">ส่งออก Excel สำหรับแก้ไข</button>
+    <button id="print-button" type="button">พิมพ์ / บันทึก PDF</button>
+    <button onclick="window.close()">ปิด</button>
+  </div>
+  <aside id="page-warning" class="page-warning hidden"></aside>
+  <main id="print-document" class="page-stack"><section class="a4-sheet"><p>กำลังโหลดเอกสาร...</p></section></main>
+  <script src="./config.js"></script>
+  <script src="./vendor/exceljs.min.js"></script>
+  <script type="module" src="./js/print.js"></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+name: Keep Alive
+
+on:
+  schedule:
+    # รันทุกๆ 6 ชั่วโมง เพื่อป้องกันเซิร์ฟเวอร์ Render และฐานข้อมูล Supabase หยุดทำงาน
+    - cron: '0 */6 * * *'
+  workflow_dispatch: # อนุญาตให้กดรันแบบกำหนดเอง (Manual) ได้จากหน้าเว็บ GitHub
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Frontend Static Site
+        run: |
+          echo "Pinging frontend static site..."
+          curl -f -s -S -I https://tongserviceit-2.onrender.com/app.html
+
+      - name: Ping Backend & Supabase Database
+        run: |
+          echo "Pinging backend health check to trigger database query..."
+          curl -f -s -S https://tong-service-it-billing-v4-1-6-deploy.onrender.com/api/health/ready
+          echo -e "\nPing completed successfully."
