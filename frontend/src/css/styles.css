@@ -1441,3 +1441,103 @@ html[data-theme="light"] .status-DRAFT       { background: #eef1f6; color: #4755
   background: rgba(220, 38, 38, .08);
   color: #991b1b;
 }
+
+/* ── Backup & Restore Panel ────────────────────────── */
+.backup-restore-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 860px) {
+  .backup-restore-grid { grid-template-columns: 1fr; }
+}
+
+.backup-scope-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.backup-scope-buttons .btn {
+  flex: 1 1 auto;
+  min-width: 120px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.backup-scope-buttons .btn svg { width: 16px; height: 16px; }
+
+.file-drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 28px 16px;
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+  text-align: center;
+  color: var(--muted);
+}
+.file-drop-zone:hover,
+.file-drop-zone.drag-over {
+  border-color: var(--primary);
+  background: rgb(var(--primary-rgb) / .06);
+  color: var(--text);
+}
+.file-drop-zone svg { width: 32px; height: 32px; opacity: .5; }
+.file-drop-zone small { font-size: 12px; opacity: .7; }
+
+.restore-preview {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  animation: fadeSlideIn .25s ease;
+}
+.restore-preview.hidden { display: none; }
+.restore-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.restore-preview-header h4 {
+  margin: 0;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.restore-preview-body {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.restore-preview-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-size: 13px;
+}
+.restore-preview-row .table-name {
+  font-weight: 500;
+}
+.restore-preview-row .row-count {
+  font-weight: 600;
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+}
+.restore-preview-actions {
+  display: grid;
+  gap: 10px;
+}
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}

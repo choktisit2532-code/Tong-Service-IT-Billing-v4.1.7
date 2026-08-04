@@ -7,18 +7,23 @@ const validate = require('../middleware/validate');
 const asyncHandler = require('../utils/async-handler');
 const AppError = require('../utils/app-error');
 const { settingsSchema } = require('../validators/schemas');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
 router.get('/public-branding', asyncHandler(async (_req, res) => {
-    const result = await pool.query(
-        `SELECT shop_name_th, shop_name_en, logo_url
-         FROM settings
-         WHERE id = 1`
-    );
-
     res.set('Cache-Control', 'no-store');
-    res.json({ data: result.rows[0] || null });
+    try {
+        const result = await pool.query(
+            `SELECT shop_name_th, shop_name_en, logo_url
+             FROM settings
+             WHERE id = 1`
+        );
+        return res.json({ data: result.rows[0] || null });
+    } catch (error) {
+        logger.warn('settings.public_branding_unavailable', { message: error.message, code: error.code });
+        return res.json({ data: null });
+    }
 }));
 
 router.use(authenticate);

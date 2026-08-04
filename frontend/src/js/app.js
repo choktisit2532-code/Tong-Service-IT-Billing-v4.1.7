@@ -2617,18 +2617,11 @@ $('#user-form').addEventListener('submit', async (event) => {
 });
 
 $('#backup-button').addEventListener('click', async () => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/backup/export`, { headers:{ Authorization:`Bearer ${getToken()}` } });
-    if (!response.ok) throw new Error('สำรองข้อมูลไม่สำเร็จ');
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `tong-billing-backup-${today()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('ดาวน์โหลดข้อมูลสำรองแล้ว');
-  } catch (error) { showGlobalError(error); }
+  await switchView('settings');
+  setTimeout(() => {
+    const panel = document.getElementById('backup-restore-panel');
+    if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 100);
 });
 
 function downloadJsonBlob(filename, payload) {
@@ -2640,6 +2633,139 @@ function downloadJsonBlob(filename, payload) {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+const SCOPE_LABELS = { all: 'ทั้งหมด', documents: 'เอกสาร', customers: 'ลูกค้า' };
+const TABLE_LABELS = {
+  customers: 'ลูกค้า', products: 'สินค้า/บริการ', settings: 'ตั้งค่าร้าน',
+  documents: 'เอกสาร', document_items: 'รายการเอกสาร', document_relations: 'ความสัมพันธ์เอกสาร',
+  document_signatures: 'ลายเซ็น', document_counters: 'ตัวนับเลขเอกสาร', audit_logs: 'ประวัติการใช้งาน'
+};
+
+async function handleBackupExport(scope, button) {
+  if (isBusy(button)) return;
+  setBusy(button, true, 'กำลังสำรอง...');
+  try {
+    const response = await fetch(`${API_BASE_URL}/backup/export?scope=${scope}`, { headers: { Authorization: `Bearer ${getToken()}` } });
+    if (!response.ok) throw new Error('สำรองข้อมูลไม่สำเร็จ');
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tong-billing-backup-${scope}-${today()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast(`ดาวน์โหลดข้อมูลสำรอง (${SCOPE_LABELS[scope]}) แล้ว`);
+  } catch (error) { showGlobalError(error); }
+  finally { setBusy(button, false); }
+}
+
+$$('[data-backup-scope]').forEach((btn) => btn.addEventListener('click', () => handleBackupExport(btn.dataset.backupScope, btn)));
+
+// ── Restore: file upload, preview, confirm ──
+let pendingRestoreFile = null;
+
+const restoreDropZone = $('#restore-drop-zone');
+const restoreFileInput = $('#restore-file-input');
+const restorePreview = $('#restore-preview');
+const restorePreviewTitle = $('#restore-preview-title');
+const restorePreviewBody = $('#restore-preview-body');
+const restorePreviewClear = $('#restore-preview-clear');
+const restoreConfirmBtn = $('#restore-confirm-button');
+
+function clearRestorePreview() {
+  pendingRestoreFile = null;
+  restorePreview.classList.add('hidden');
+  restorePreviewBody.innerHTML = '';
+  restoreFileInput.value = '';
+  restoreDropZone.style.display = '';
+}
+
+function renderRestorePreview(parsed) {
+  const scope = parsed.scope || 'all';
+  const exportedAt = parsed.exported_at ? new Date(parsed.exported_at).toLocaleString('th-TH') : 'ไม่ทราบ';
+  restorePreviewTitle.textContent = `ไฟล์ Backup — ${SCOPE_LABELS[scope] || scope} (${exportedAt})`;
+  restorePreviewBody.innerHTML = '';
+  const tables = parsed.data ? Object.keys(parsed.data) : [];
+  if (!tables.length) {
+    restorePreviewBody.innerHTML = '<p style="color:var(--muted);font-size:13px">ไม่พบข้อมูลในไฟล์</p>';
+    return;
+  }
+  for (const table of tables) {
+    const count = Array.isArray(parsed.data[table]) ? parsed.data[table].length : 0;
+    const row = document.createElement('div');
+    row.className = 'restore-preview-row';
+    row.innerHTML = `<span class="table-name">${TABLE_LABELS[table] || table}</span><span class="row-count">${count.toLocaleString()} รายการ</span>`;
+    restorePreviewBody.appendChild(row);
+  }
+  restoreDropZone.style.display = 'none';
+  restorePreview.classList.remove('hidden');
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function handleRestoreFile(file) {
+  if (!file || !file.name.endsWith('.json')) {
+    showToast('กรุณาเลือกไฟล์ .json', 'warning');
+    return;
+  }
+  if (file.size > 20 * 1024 * 1024) {
+    showToast('ไฟล์ใหญ่เกิน 20MB', 'warning');
+    return;
+  }
+  try {
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    if (!parsed || !parsed.data || typeof parsed.data !== 'object') {
+      showToast('รูปแบบไฟล์ backup ไม่ถูกต้อง', 'warning');
+      return;
+    }
+    pendingRestoreFile = file;
+    renderRestorePreview(parsed);
+  } catch {
+    showToast('ไม่สามารถอ่านไฟล์ได้ กรุณาตรวจสอบว่าเป็น JSON ที่ถูกต้อง', 'warning');
+  }
+}
+
+restoreFileInput.addEventListener('change', (e) => {
+  if (e.target.files[0]) handleRestoreFile(e.target.files[0]);
+});
+
+restoreDropZone.addEventListener('dragover', (e) => { e.preventDefault(); restoreDropZone.classList.add('drag-over'); });
+restoreDropZone.addEventListener('dragleave', () => restoreDropZone.classList.remove('drag-over'));
+restoreDropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  restoreDropZone.classList.remove('drag-over');
+  const file = e.dataTransfer?.files[0];
+  if (file) handleRestoreFile(file);
+});
+
+restorePreviewClear.addEventListener('click', clearRestorePreview);
+
+restoreConfirmBtn.addEventListener('click', async () => {
+  if (!pendingRestoreFile) { showToast('กรุณาเลือกไฟล์ backup ก่อน', 'warning'); return; }
+  if (!confirm('ยืนยันกู้คืนข้อมูลจากไฟล์ backup นี้? ข้อมูลเดิมจะถูกแทนที่')) return;
+  if (isBusy(restoreConfirmBtn)) return;
+  setBusy(restoreConfirmBtn, true, 'กำลังกู้คืน...');
+  try {
+    const formData = new FormData();
+    formData.append('backup', pendingRestoreFile);
+    const response = await fetch(`${API_BASE_URL}/backup/restore`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${getToken()}` },
+      body: formData
+    });
+    if (!response.ok) {
+      const errData = await response.json().catch(() => null);
+      throw new Error(errData?.error?.message || `HTTP ${response.status}`);
+    }
+    const result = await response.json();
+    const scope = result.data?.scope || 'all';
+    clearRestorePreview();
+    showToast(`กู้คืนข้อมูล (${SCOPE_LABELS[scope] || scope}) สำเร็จแล้ว`);
+    await Promise.allSettled([loadDashboard(), loadDocuments(), loadCustomers(), loadProducts(), loadAuditLogs()]);
+  } catch (error) { showGlobalError(error); }
+  finally { setBusy(restoreConfirmBtn, false); }
+});
+
 
 function resetModeLabel(mode) {
   return {

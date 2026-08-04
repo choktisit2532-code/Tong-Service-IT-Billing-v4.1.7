@@ -11,17 +11,18 @@ async function writeAudit(client, { userId, action, entityType, entityId, detail
         throw new Error('writeAudit requires a pg Pool or Client instance');
     }
 
-    await client.query(
-        `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details)
-         VALUES ($1, $2, $3, $4, $5::jsonb)`,
-        [
+    await client.query({
+        text: `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details)
+               VALUES ($1, $2, $3, $4, $5::jsonb)`,
+        values: [
             userId || null,
             action,
             entityType,
             entityId == null ? null : String(entityId),
             serializeDetails(details)
-        ]
-    );
+        ],
+        queryMode: 'simple'
+    });
 }
 
 module.exports = { writeAudit, serializeDetails };

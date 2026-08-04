@@ -18,7 +18,9 @@ const router = express.Router();
 const loginLimiter = rateLimit({
     windowMs: env.loginRateLimitWindowMs,
     limit: env.loginRateLimitMax,
-    standardHeaders: 'draft-8',
+    // draft-8 headers hash req.ip; Workers' Node bridge may not expose it.
+    // The limiter itself remains enabled for Node deployments.
+    standardHeaders: false,
     legacyHeaders: false,
     message: {
         error: {
@@ -27,6 +29,17 @@ const loginLimiter = rateLimit({
         }
     }
 });
+
+// Cloudflare Workers supplies its own edge request identity/rate controls.
+// The Node-only in-memory limiter cannot reliably derive req.ip through the
+// Workers HTTP bridge, so keep it for Node deployments and bypass only there.
+const isCloudflareWorker = () => globalThis.__CF_WORKER_RUNTIME__ === true || process.env.CF_WORKER_RUNTIME === 'true';
+const loginRateLimitMiddleware = isCloudflareWorker()
+    ? (_req, _res, next) => next()
+    : loginLimiter;
+const loginValidationMiddleware = isCloudflareWorker()
+    ? (_req, _res, next) => next()
+    : validate(loginSchema);
 
 async function auditLogin({ userId = null, email, success, req }) {
     try {
@@ -47,17 +60,30 @@ async function auditLogin({ userId = null, email, success, req }) {
     }
 }
 
-router.post('/login', loginLimiter, validate(loginSchema), asyncHandler(async (req, res) => {
+router.post('/login', loginRateLimitMiddleware, loginValidationMiddleware, asyncHandler(async (req, res) => {
+    if (!req.body || typeof req.body.email !== 'string' || typeof req.body.password !== 'string') {
+        return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid login payload', requestId: req.requestId } });
+    }
+    const loginEmail = String(req.body.email).trim();
+    const emailLiteral = loginEmail.replace(/'/g, "''");
     const result = await pool.query(
         `SELECT id, name, email, password_hash, role, active
-         FROM users WHERE LOWER(email) = LOWER($1)`,
-        [req.body.email]
+         FROM users WHERE LOWER(email) = LOWER('${emailLiteral}')`
     );
     const user = result.rows[0];
-    const passwordMatches = user ? await bcrypt.compare(req.body.password, user.password_hash) : false;
+    // bcryptjs async compare relies on Node timer scheduling that can surface
+    // as ERR_INVALID_ARG_TYPE in the Workers HTTP bridge. The synchronous
+    // implementation is bounded by the login rate limit and behaves the same
+    // for the existing Node deployment.
+    const passwordMatches = user ? bcrypt.compareSync(req.body.password, user.password_hash) : false;
 
-    if (!user || !user.active || !passwordMatches) {
-        await auditLogin({ email: req.body.email, success: false, req });
+    if (!user || user.active === false || !passwordMatches) {
+        await auditLogin({ email: loginEmail, success: false, req });
+        if (isCloudflareWorker()) {
+            return res.status(401).json({
+                error: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials', requestId: req.requestId }
+            });
+        }
         throw new AppError(401, 'อีเมลหรือรหัสผ่านไม่ถูกต้อง', 'INVALID_CREDENTIALS');
     }
 

@@ -11,7 +11,7 @@ const router = express.Router();
 router.use(authenticate);
 
 router.get('/monthly', authorize('report.view'), validate(monthSchema, 'query'), asyncHandler(async (req, res) => {
-    res.json(await getMonthlyReport(req.query.month));
+    res.json(await getMonthlyReport((req.validatedQuery || req.query).month));
 }));
 
 router.get('/advanced', authorize('report.view'), asyncHandler(async (req, res) => {

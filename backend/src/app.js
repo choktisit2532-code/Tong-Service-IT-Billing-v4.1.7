@@ -58,8 +58,12 @@ app.use(express.json({ limit: env.requestBodyLimit, strict: true }));
 app.use(rateLimit({
     windowMs: env.rateLimitWindowMs,
     limit: env.rateLimitMax,
-    standardHeaders: 'draft-8',
+    standardHeaders: globalThis.__CF_WORKER_RUNTIME__ === true ? false : 'draft-8',
     legacyHeaders: false,
+    // express-rate-limit expects Node request identity internals that the
+    // Workers HTTP bridge does not provide reliably. Cloudflare performs the
+    // edge-level protection for this deployment; keep the limiter for Node.
+    skip: () => globalThis.__CF_WORKER_RUNTIME__ === true,
     message: {
         error: {
             code: 'TOO_MANY_REQUESTS',

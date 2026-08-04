@@ -60,7 +60,14 @@ const schema = z.object({
     }
 });
 
-const parsed = schema.safeParse(process.env);
+const envSource = { ...(process.env || {}) };
+if (envSource.CF_WORKER_RUNTIME === 'true' && !envSource.DATABASE_URL) {
+    // Hyperdrive is an object binding, so its connection string is resolved
+    // lazily inside db.js during a request instead of at module startup.
+    envSource.DATABASE_URL = 'hyperdrive://binding';
+}
+
+const parsed = schema.safeParse(envSource);
 if (!parsed.success) {
     console.error('Invalid environment variables:');
     console.error(z.prettifyError(parsed.error));

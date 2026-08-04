@@ -11,7 +11,10 @@ module.exports = function validate(schema, source = 'body') {
                 parsed.error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message }))
             ));
         }
-        req[source] = parsed.data;
+        // Express 5 exposes req.query through a getter in the Workers bridge.
+        // Keep validated query values separately instead of assigning to it.
+        if (source === 'query') req.validatedQuery = parsed.data;
+        else req[source] = parsed.data;
         next();
     };
 };

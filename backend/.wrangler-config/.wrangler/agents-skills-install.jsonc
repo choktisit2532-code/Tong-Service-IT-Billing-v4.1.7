@@ -1,0 +1,35 @@
+{
+	"version": 1,
+	"accepted": false,
+	"date": "2026-08-04T04:05:46.454Z",
+	"detectedAgents": [
+		{
+			"name": "Codex",
+			"rosie": {
+				"id": "codex",
+				"globalPath": "C:\\Users\\Administrator\\.codex\\skills"
+			}
+		},
+		{
+			"name": "GitHub Copilot",
+			"rosie": {
+				"id": "copilot",
+				"globalPath": "C:\\Users\\Administrator\\.copilot\\skills"
+			}
+		},
+		{
+			"name": "Gemini CLI",
+			"rosie": {
+				"id": "gemini-cli",
+				"globalPath": "C:\\Users\\Administrator\\.gemini\\skills"
+			}
+		},
+		{
+			"name": "Antigravity",
+			"rosie": {
+				"id": "antigravity",
+				"globalPath": "C:\\Users\\Administrator\\.gemini\\antigravity\\skills"
+			}
+		}
+	]
+}

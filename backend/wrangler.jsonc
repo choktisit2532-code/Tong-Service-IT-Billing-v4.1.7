@@ -1,0 +1,25 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "tongserviceit-api",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-08-04",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "enable_nodejs_http_server_modules"
+  ],
+  "vars": {
+    "CF_WORKER_RUNTIME": "true",
+    "NODE_ENV": "production",
+    "CORS_ORIGINS": "https://tongserviceit.choktisit2532.workers.dev"
+  },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "1b0ae5d43dc646bfa2039b56cfdb8fba"
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}

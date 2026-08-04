@@ -23,7 +23,7 @@ router.get('/', authorize('document.view'), validate(documentListSchema, 'query'
         Pragma: 'no-cache',
         Expires: '0'
     });
-    res.json(await listDocuments(req.query, { role: req.user.role }));
+    res.json(await listDocuments(req.validatedQuery || req.query, { role: req.user.role }));
 }));
 
 router.get('/sources', authorize('document.view'), validate(sourceQuerySchema, 'query'), asyncHandler(async (req, res) => {
@@ -32,7 +32,7 @@ router.get('/sources', authorize('document.view'), validate(sourceQuerySchema, '
         Pragma: 'no-cache',
         Expires: '0'
     });
-    const result = await listAvailableSources(req.query);
+    const result = await listAvailableSources(req.validatedQuery || req.query);
     res.json({
         data: result.data,
         pagination: { total: result.total, has_more: result.has_more }

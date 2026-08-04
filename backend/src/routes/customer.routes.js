@@ -36,7 +36,7 @@ router.get('/', authorize('customer.view'), validate(masterDataListSchema, 'quer
         Pragma: 'no-cache',
         Expires: '0'
     });
-    const { search, page, limit, status } = req.query;
+    const { search, page, limit, status } = req.validatedQuery || req.query;
     const offset = (page - 1) * limit;
     const pattern = `%${search}%`;
     const statusCondition = `(
@@ -45,23 +45,28 @@ router.get('/', authorize('customer.view'), validate(masterDataListSchema, 'quer
         OR ($3 = 'inactive' AND active = FALSE)
     )`;
 
-    const [result, count] = await Promise.all([
-        pool.query(
+    const client = await pool.connect();
+    let result;
+    let count;
+    try {
+        result = await client.query(
             `SELECT * FROM customers
              WHERE ${statusCondition}
                AND ($1 = '' OR name ILIKE $2 OR COALESCE(code, '') ILIKE $2 OR COALESCE(tax_id, '') ILIKE $2)
              ORDER BY COALESCE(active, TRUE) DESC, name
              LIMIT $4 OFFSET $5`,
             [search, pattern, status, limit, offset]
-        ),
-        pool.query(
+        );
+        count = await client.query(
             `SELECT COUNT(*)::integer AS total
              FROM customers
              WHERE ${statusCondition}
                AND ($1 = '' OR name ILIKE $2 OR COALESCE(code, '') ILIKE $2 OR COALESCE(tax_id, '') ILIKE $2)`,
             [search, pattern, status]
-        )
-    ]);
+        );
+    } finally {
+        await client.release();
+    }
 
     res.json({ data: result.rows, pagination: { page, limit, total: count.rows[0].total } });
 }));

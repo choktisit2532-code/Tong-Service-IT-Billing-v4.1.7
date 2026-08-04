@@ -1296,8 +1296,11 @@ async function listDocuments(query, { role } = {}) {
     params.push(query.limit, offset);
     const countParams = params.slice(0, -2);
 
-    const [dataResult, countResult] = await Promise.all([
-        pool.query(
+    const client = await pool.connect();
+    let dataResult;
+    let countResult;
+    try {
+        dataResult = await client.query(
             `SELECT d.id, d.document_number, d.document_type, d.status, d.document_date,
                     d.due_date, d.grand_total, d.net_total, d.withholding_amount,
                     d.transfer_fee, d.cancelled_at, d.cancellation_reason,
@@ -1309,13 +1312,15 @@ async function listDocuments(query, { role } = {}) {
              ORDER BY COALESCE(d.deleted_at, d.document_date::timestamptz) DESC, d.id DESC
              LIMIT $${params.length - 1} OFFSET $${params.length}`,
             params
-        ),
-        pool.query(
+        );
+        countResult = await client.query(
             `SELECT COUNT(*)::integer AS total
              FROM documents d JOIN customers c ON c.id = d.customer_id ${where}`,
             countParams
-        )
-    ]);
+        );
+    } finally {
+        await client.release();
+    }
 
     return {
         data: dataResult.rows,

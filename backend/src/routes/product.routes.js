@@ -20,7 +20,7 @@ router.get('/suggestions', authorize('product.view'), asyncHandler(async (req, r
 }));
 
 router.get('/', authorize('product.view'), validate(masterDataListSchema, 'query'), asyncHandler(async (req, res) => {
-    const { search, page, limit, status } = req.query;
+    const { search, page, limit, status } = req.validatedQuery || req.query;
     const offset = (page - 1) * limit;
     const pattern = `%${search}%`;
     const statusCondition = `(

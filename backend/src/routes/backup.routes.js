@@ -18,23 +18,35 @@ const resetTables = {
     business_data: ['document_signatures', 'document_relations', 'document_items', 'documents', 'document_counters', 'customers', 'products', 'audit_logs']
 };
 
+const scopeTables = {
+    all: backupTables,
+    documents: ['documents', 'document_items', 'document_relations', 'document_signatures'],
+    customers: ['customers']
+};
+
 const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 20 * 1024 * 1024, files: 1 }
 });
 
-async function buildBackup(client = pool) {
-    const backup = { version: 3, exported_at: new Date().toISOString(), tables: backupTables, data: {} };
-    for (const table of backupTables) {
+async function buildBackup(client = pool, scope = 'all') {
+    const tables = scopeTables[scope] || scopeTables.all;
+    const backup = { version: 3, scope, exported_at: new Date().toISOString(), tables, data: {} };
+    for (const table of tables) {
         const result = await client.query(`SELECT * FROM ${table} ORDER BY 1`);
         backup.data[table] = result.rows;
     }
     return backup;
 }
 
-router.get('/export', authorize('backup.export'), asyncHandler(async (_req, res) => {
-    const backup = await buildBackup();
-    res.setHeader('Content-Disposition', `attachment; filename="tong-billing-backup-${new Date().toISOString().slice(0,10)}.json"`);
+router.get('/export', authorize('backup.export'), asyncHandler(async (req, res) => {
+    const scope = req.query.scope || 'all';
+    if (!scopeTables[scope]) {
+        throw new AppError(400, 'ประเภทการสำรองข้อมูลไม่ถูกต้อง', 'INVALID_BACKUP_SCOPE');
+    }
+    const scopeLabel = { all: 'all', documents: 'documents', customers: 'customers' }[scope];
+    const backup = await buildBackup(pool, scope);
+    res.setHeader('Content-Disposition', `attachment; filename="tong-billing-backup-${scopeLabel}-${new Date().toISOString().slice(0,10)}.json"`);
     res.json(backup);
 }));
 
@@ -86,17 +98,41 @@ const TABLE_ALLOWED_COLUMNS = {
     ]),
     audit_logs: new Set([
         'id', 'user_id', 'action', 'entity_type', 'entity_id', 'details', 'created_at'
+    ]),
+    document_counters: new Set([
+        'document_type', 'period_key', 'last_number', 'updated_at'
     ])
 };
 
+router.post('/preview', authorize('backup.export'), upload.single('backup'), asyncHandler(async (req, res) => {
+    const backup = normalizeBackupPayload(req.file);
+    const preview = {
+        version: backup.version,
+        scope: backup.scope || 'all',
+        exported_at: backup.exported_at,
+        tables: {}
+    };
+    for (const [table, rows] of Object.entries(backup.data)) {
+        if (Array.isArray(rows)) {
+            preview.tables[table] = rows.length;
+        }
+    }
+    res.json({ data: preview });
+}));
+
 router.post('/restore', authorize('user.manage'), upload.single('backup'), asyncHandler(async (req, res) => {
     const backup = normalizeBackupPayload(req.file);
+    const scope = backup.scope || 'all';
+    const restoreTables = scope === 'all' ? backupTables : (scopeTables[scope] || Object.keys(backup.data).filter((t) => TABLE_ALLOWED_COLUMNS[t]));
+
     const restored = await withTransaction(async (client) => {
         await client.query('SET CONSTRAINTS ALL DEFERRED');
-        for (const table of [...backupTables].reverse()) {
-            await client.query(`TRUNCATE TABLE ${table} RESTART IDENTITY CASCADE`);
+        for (const table of [...restoreTables].reverse()) {
+            if (backup.data[table]) {
+                await client.query(`TRUNCATE TABLE ${table} RESTART IDENTITY CASCADE`);
+            }
         }
-        for (const table of backupTables) {
+        for (const table of restoreTables) {
             const rows = Array.isArray(backup.data[table]) ? backup.data[table] : [];
             for (const row of rows) {
                 const columns = Object.keys(row);
@@ -114,10 +150,10 @@ router.post('/restore', authorize('user.manage'), upload.single('backup'), async
                 );
             }
         }
-        return Object.fromEntries(backupTables.map((table) => [table, Array.isArray(backup.data[table]) ? backup.data[table].length : 0]));
+        return Object.fromEntries(restoreTables.map((table) => [table, Array.isArray(backup.data[table]) ? backup.data[table].length : 0]));
     }, { name: 'backup.restore' });
 
-    res.json({ data: { restored, restored_at: new Date().toISOString() } });
+    res.json({ data: { scope, restored, restored_at: new Date().toISOString() } });
 }));
 
 function resetPlanLabel(mode) {

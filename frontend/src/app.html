@@ -390,6 +390,41 @@
             </form>
             <div class="table-wrap"><table><thead><tr><th>ชื่อ</th><th>อีเมล</th><th>สิทธิ์</th><th>สถานะ</th><th>จัดการ</th></tr></thead><tbody id="users-table"><tr><td colspan="5" class="table-empty">กำลังโหลด...</td></tr></tbody></table></div>
           </article>
+          <article id="backup-restore-panel" class="panel admin-only">
+            <div class="panel-header"><div><h2><i data-lucide="hard-drive-download"></i> สำรองและกู้คืนข้อมูล</h2><p>สำรองข้อมูลแยกประเภท หรืออัปโหลดไฟล์ backup เพื่อกู้คืน</p></div></div>
+            <div class="backup-restore-grid">
+              <fieldset class="sub-card"><legend><i data-lucide="download"></i> สำรองข้อมูล (Export)</legend>
+                <p class="field-help" style="margin:0">เลือกประเภทข้อมูลที่ต้องการสำรอง ระบบจะดาวน์โหลดเป็นไฟล์ JSON</p>
+                <div class="backup-scope-buttons">
+                  <button id="backup-scope-all" class="btn btn-primary" data-backup-scope="all"><i data-lucide="database"></i> ทั้งหมด</button>
+                  <button id="backup-scope-documents" class="btn btn-secondary" data-backup-scope="documents"><i data-lucide="file-text"></i> เฉพาะเอกสาร</button>
+                  <button id="backup-scope-customers" class="btn btn-secondary" data-backup-scope="customers"><i data-lucide="users"></i> เฉพาะลูกค้า</button>
+                </div>
+              </fieldset>
+              <fieldset class="sub-card"><legend><i data-lucide="upload"></i> กู้คืนข้อมูล (Restore)</legend>
+                <p class="field-help" style="margin:0">อัปโหลดไฟล์ backup JSON ที่สำรองไว้ ระบบจะกู้คืนเฉพาะข้อมูลที่มีในไฟล์</p>
+                <div class="restore-upload-area">
+                  <label class="file-drop-zone" id="restore-drop-zone">
+                    <input type="file" id="restore-file-input" accept=".json" hidden>
+                    <i data-lucide="upload-cloud"></i>
+                    <span>คลิกเลือกไฟล์ หรือลากไฟล์มาวางที่นี่</span>
+                    <small>.json เท่านั้น (ขนาดไม่เกิน 20MB)</small>
+                  </label>
+                  <div id="restore-preview" class="restore-preview hidden">
+                    <div class="restore-preview-header">
+                      <h4 id="restore-preview-title"></h4>
+                      <button id="restore-preview-clear" class="icon-button" aria-label="ยกเลิก"><i data-lucide="x"></i></button>
+                    </div>
+                    <div id="restore-preview-body" class="restore-preview-body"></div>
+                    <div class="restore-preview-actions">
+                      <div class="alert alert-danger" style="margin:0">การกู้คืนจะแทนที่ข้อมูลเดิมในตารางที่เลือก ไม่สามารถย้อนกลับได้</div>
+                      <button id="restore-confirm-button" class="btn btn-primary"><i data-lucide="rotate-ccw"></i> ยืนยันกู้คืนข้อมูล</button>
+                    </div>
+                  </div>
+                </div>
+              </fieldset>
+            </div>
+          </article>
           <article class="panel danger-panel">
             <div class="panel-header"><div><h2><i data-lucide="shield-alert"></i> เคลียร์ข้อมูลระบบ</h2><p>สำหรับล้างข้อมูลทดสอบหรือข้อมูลค้าง โดยระบบจะดาวน์โหลด Backup ก่อนล้าง</p></div></div>
             <form id="admin-reset-form" class="stack-form compact">
