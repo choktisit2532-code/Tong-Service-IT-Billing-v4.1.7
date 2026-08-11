@@ -45,39 +45,37 @@ async function getAdvancedReports(query = {}) {
       ORDER BY d.document_date`, params),
     pool.query(`
       SELECT d.id,d.document_number,d.document_type,d.document_date,d.due_date,d.status,
-             d.grand_total,d.net_total,c.name AS customer_name,
+             d.grand_total AS original_total,
+             GREATEST(d.grand_total - COALESCE(payments.paid_total,0),0) AS grand_total,
+             d.net_total,c.name AS customer_name,
              GREATEST((CURRENT_DATE - COALESCE(d.due_date,d.document_date)),0)::integer AS overdue_days
       FROM documents d JOIN customers c ON c.id = d.customer_id
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(SUM(rc.grand_total),0) AS paid_total
+        FROM document_relations r JOIN documents rc ON rc.id = r.target_document_id
+        WHERE r.source_document_id = d.id AND r.relation_type = 'PAID_BY'
+          AND rc.document_type = 'RC' AND rc.status = 'PAID' AND rc.deleted_at IS NULL
+      ) payments ON TRUE
       WHERE d.deleted_at IS NULL
-        AND d.status IN ('PENDING','APPROVED','IN_PROGRESS','OVERDUE')
+        AND d.status IN ('PENDING','APPROVED','IN_PROGRESS','PARTIALLY_PAID','OVERDUE')
         AND d.document_type IN ('IN','BN')
-        AND NOT EXISTS (
-          SELECT 1 FROM document_relations r
-          JOIN documents rc ON rc.id = r.target_document_id
-          WHERE r.source_document_id = d.id
-            AND r.relation_type = 'PAID_BY'
-            AND rc.document_type = 'RC'
-            AND rc.deleted_at IS NULL
-            AND rc.status <> 'CANCELLED'
-        )
+        AND d.grand_total > COALESCE(payments.paid_total,0)
       ORDER BY COALESCE(d.due_date,d.document_date), d.id`, []),
     pool.query(`
       WITH receivable_docs AS (
-        SELECT d.grand_total,
+        SELECT GREATEST(d.grand_total - COALESCE(payments.paid_total,0),0) AS grand_total,
                GREATEST((CURRENT_DATE - COALESCE(d.due_date,d.document_date)),0)::integer AS overdue_days
         FROM documents d
+        LEFT JOIN LATERAL (
+          SELECT COALESCE(SUM(rc.grand_total),0) AS paid_total
+          FROM document_relations r JOIN documents rc ON rc.id = r.target_document_id
+          WHERE r.source_document_id = d.id AND r.relation_type = 'PAID_BY'
+            AND rc.document_type = 'RC' AND rc.status = 'PAID' AND rc.deleted_at IS NULL
+        ) payments ON TRUE
         WHERE d.deleted_at IS NULL
-          AND d.status IN ('PENDING','APPROVED','IN_PROGRESS','OVERDUE')
+          AND d.status IN ('PENDING','APPROVED','IN_PROGRESS','PARTIALLY_PAID','OVERDUE')
           AND d.document_type IN ('IN','BN')
-          AND NOT EXISTS (
-            SELECT 1 FROM document_relations r
-            JOIN documents rc ON rc.id = r.target_document_id
-            WHERE r.source_document_id = d.id
-              AND r.relation_type = 'PAID_BY'
-              AND rc.document_type = 'RC'
-              AND rc.deleted_at IS NULL
-              AND rc.status <> 'CANCELLED'
-          )
+          AND d.grand_total > COALESCE(payments.paid_total,0)
       )
       SELECT bucket, COUNT(*)::integer AS document_count, COALESCE(SUM(grand_total),0) AS total
       FROM (

@@ -531,15 +531,58 @@
           </div>
 
           <section id="receipt-payment-box" class="receipt-payment-box hidden">
-            <div class="source-box-heading"><div><strong>ข้อมูลรับชำระจริง</strong><span>แสดงเฉพาะใบเสร็จรับเงินและใช้ข้อมูลที่เกิดขึ้นจริง</span></div><span class="source-badge success"><i data-lucide="circle-check"></i> รับเงินจริง</span></div>
-            <div class="payment-choice">
-              <label class="toggle-card"><input id="doc-receipt-withholding-enabled" type="checkbox"><span class="toggle-control"></span><div><strong>ลูกค้าหัก ณ ที่จ่าย</strong><small>เปิดเมื่อได้รับยอดสุทธิหลังหักภาษี</small></div></label>
-            </div>
-            <div class="form-grid-4">
-              <label>อัตราหัก ณ ที่จ่าย (%)<input id="doc-receipt-withholding-rate" type="number" min="0" max="100" step="0.01"></label>
-              <label>จำนวนเงินที่หักจริง<input id="doc-receipt-withholding-amount" type="number" min="0" step="0.01" placeholder="คำนวณอัตโนมัติ"></label>
-              <label>ค่าธรรมเนียมโอน<input id="doc-receipt-transfer-fee" type="number" min="0" step="0.01" value="0"></label>
-              <label>วันที่รับเงินจริง<input id="doc-payment-received-date" type="date"></label>
+            <div class="source-box-heading"><div><strong>รับชำระจากลูกค้า</strong><span>เลือกประเภทและช่องทางรับชำระ แล้วระบบจะคำนวณยอดคงเหลือให้ทันที</span></div><span class="source-badge success"><i data-lucide="circle-check"></i> รับชำระ</span></div>
+
+            <fieldset class="payment-step-card">
+              <legend><span>1</span> ลูกค้าจ่ายเงินแบบไหน</legend>
+              <div class="payment-type-grid">
+                <label class="payment-type-card"><input id="doc-payment-type-deposit" type="radio" name="doc-receipt-payment-type" value="DEPOSIT"><span><strong>มัดจำ</strong><small>เงินเริ่มงานและนำไปหักจากยอดงาน</small></span></label>
+                <label class="payment-type-card"><input id="doc-payment-type-partial" type="radio" name="doc-receipt-payment-type" value="PARTIAL"><span><strong>ชำระบางส่วน</strong><small>จ่ายเท่าไรก็ได้โดยไม่ระบุงวด</small></span></label>
+                <label class="payment-type-card"><input id="doc-payment-type-installment" type="radio" name="doc-receipt-payment-type" value="INSTALLMENT"><span><strong>ชำระตามงวด</strong><small>ระบุงวดปัจจุบันและจำนวนงวด</small></span></label>
+                <label class="payment-type-card"><input id="doc-payment-type-full" type="radio" name="doc-receipt-payment-type" value="FULL" checked><span><strong>ชำระครบทั้งหมด</strong><small>ใช้ยอดคงเหลือทั้งหมดอัตโนมัติ</small></span></label>
+              </div>
+            </fieldset>
+
+            <fieldset class="payment-step-card">
+              <legend><span>2</span> ครั้งนี้ลูกค้าชำระเท่าไร</legend>
+              <div class="form-grid-3 receipt-amount-grid">
+                <label>ยอดที่ลูกค้าชำระครั้งนี้<input id="doc-receipt-payment-amount" type="number" min="0.01" step="0.01" placeholder="ระบุยอดก่อนหัก ณ ที่จ่าย"></label>
+                <div id="receipt-installment-fields" class="receipt-installment-fields hidden">
+                  <label>งวดปัจจุบัน<input id="doc-installment-number" type="number" min="1" step="1" placeholder="เช่น 1"></label>
+                  <label>จำนวนงวดทั้งหมด<input id="doc-installment-count" type="number" min="1" step="1" placeholder="เช่น 3"></label>
+                </div>
+              </div>
+              <div id="receipt-installment-warning" class="inline-warning hidden"><i data-lucide="triangle-alert"></i><span></span></div>
+            </fieldset>
+
+            <fieldset class="payment-step-card">
+              <legend><span>3</span> ช่องทางรับชำระ</legend>
+              <div class="payment-type-grid payment-method-grid">
+                <label class="payment-type-card"><input id="doc-payment-method-transfer" type="radio" name="doc-receipt-payment-method" value="TRANSFER" checked><span><strong>โอนเข้าบัญชี</strong><small>รับเงินผ่านธนาคารหรือโมบายแบงก์กิ้ง</small></span></label>
+                <label class="payment-type-card"><input id="doc-payment-method-cash" type="radio" name="doc-receipt-payment-method" value="CASH"><span><strong>เงินสด</strong><small>รับเงินสดจากลูกค้าโดยตรง</small></span></label>
+                <label class="payment-type-card"><input id="doc-payment-method-check" type="radio" name="doc-receipt-payment-method" value="CHECK"><span><strong>เช็ค</strong><small>รับชำระด้วยเช็ค</small></span></label>
+                <label class="payment-type-card"><input id="doc-payment-method-other" type="radio" name="doc-receipt-payment-method" value="OTHER"><span><strong>อื่น ๆ</strong><small>ช่องทางอื่นที่ไม่ได้ระบุไว้</small></span></label>
+              </div>
+            </fieldset>
+
+            <fieldset class="payment-step-card">
+              <legend><span>4</span> ลูกค้ามีหัก ณ ที่จ่ายหรือไม่</legend>
+              <div class="payment-choice">
+                <label class="toggle-card"><input id="doc-receipt-withholding-enabled" type="checkbox"><span class="toggle-control"></span><div><strong>มีหัก ณ ที่จ่าย</strong><small>ยอดที่หักถือเป็นเงินที่ลูกค้าชำระแล้ว</small></div></label>
+              </div>
+              <div id="receipt-withholding-fields" class="form-grid-2 hidden">
+                <label>อัตราหัก ณ ที่จ่าย (%)<input id="doc-receipt-withholding-rate" type="number" min="0" max="100" step="0.01"></label>
+                <label>จำนวนภาษีที่หัก<input id="doc-receipt-withholding-amount" type="number" min="0" step="0.01" placeholder="เว้นว่างเพื่อคำนวณอัตโนมัติ"></label>
+              </div>
+              <div class="form-grid-2 receipt-extra-fields">
+                <label id="receipt-transfer-fee-field">ค่าธรรมเนียมโอน<input id="doc-receipt-transfer-fee" type="number" min="0" step="0.01" value="0"></label>
+                <label>วันที่รับชำระ<input id="doc-payment-received-date" type="date"></label>
+              </div>
+            </fieldset>
+
+            <div id="receipt-balance-summary" class="receipt-live-summary hidden">
+              <div class="receipt-summary-heading"><i data-lucide="wallet-cards"></i><div><strong>สรุปการรับชำระ</strong><small>ยอดนี้จะเปลี่ยนทันทีเมื่อแก้จำนวนเงิน</small></div></div>
+              <div id="receipt-balance-summary-text" class="receipt-summary-rows"></div>
             </div>
             <details class="advanced-details">
               <summary><i data-lucide="file-badge"></i> เพิ่มข้อมูลหนังสือรับรองหัก ณ ที่จ่าย</summary>

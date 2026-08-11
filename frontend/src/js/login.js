@@ -43,6 +43,16 @@ if (getToken()) {
 const form = document.getElementById('login-form');
 const errorBox = document.getElementById('login-error');
 const button = document.getElementById('login-button');
+const passwordInput = document.getElementById('password');
+document.getElementById('password-visibility').addEventListener('click', (event) => {
+  const visible = passwordInput.type === 'text'; passwordInput.type = visible ? 'password' : 'text'; event.currentTarget.textContent = visible ? '👁' : '🙈';
+});
+document.getElementById('forgot-password').addEventListener('click', async () => {
+  const email = document.getElementById('email').value.trim() || prompt('กรอกอีเมลที่ใช้เข้าสู่ระบบ');
+  if (!email) return;
+  try { await request('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }); errorBox.textContent = 'หากอีเมลนี้อยู่ในระบบ เราได้ส่งลิงก์ตั้งรหัสผ่านใหม่แล้ว'; errorBox.classList.remove('hidden'); }
+  catch (error) { errorBox.textContent = error.message; errorBox.classList.remove('hidden'); }
+});
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();

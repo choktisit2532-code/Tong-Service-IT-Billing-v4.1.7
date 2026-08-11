@@ -28,8 +28,17 @@ router.get('/', authorize('dashboard.view'), asyncHandler(async (req, res) => {
         pool.query(`
             SELECT
               COALESCE(SUM(net_total) FILTER (WHERE document_type='RC' AND document_date >= date_trunc('month', CURRENT_DATE)),0) AS monthly_income,
-              COALESCE(SUM(grand_total) FILTER (
-                WHERE status IN ('PENDING','APPROVED','OVERDUE')
+              COALESCE(SUM(GREATEST(grand_total - COALESCE((
+                SELECT SUM(rc.grand_total)
+                FROM document_relations pr
+                JOIN documents rc ON rc.id = pr.target_document_id
+                WHERE pr.source_document_id = documents.id
+                  AND pr.relation_type = 'PAID_BY'
+                  AND rc.document_type = 'RC'
+                  AND rc.status = 'PAID'
+                  AND rc.deleted_at IS NULL
+              ),0),0)) FILTER (
+                WHERE status IN ('PENDING','APPROVED','PARTIALLY_PAID','OVERDUE')
                   AND (
                     document_type = 'BN'
                     OR (
@@ -61,9 +70,17 @@ router.get('/', authorize('dashboard.view'), asyncHandler(async (req, res) => {
             ORDER BY d.document_date DESC,d.id DESC LIMIT 8
         `),
         pool.query(`
-            SELECT d.id,d.document_number,d.due_date,d.grand_total,c.name AS customer_name
+            SELECT d.id,d.document_number,d.due_date,
+                   GREATEST(d.grand_total - COALESCE(payments.paid_total,0),0) AS grand_total,
+                   c.name AS customer_name
             FROM documents d JOIN customers c ON c.id=d.customer_id
-            WHERE d.deleted_at IS NULL AND d.due_date < CURRENT_DATE AND d.status IN ('PENDING','APPROVED','OVERDUE')
+            LEFT JOIN LATERAL (
+              SELECT COALESCE(SUM(rc.grand_total),0) AS paid_total
+              FROM document_relations r JOIN documents rc ON rc.id=r.target_document_id
+              WHERE r.source_document_id=d.id AND r.relation_type='PAID_BY'
+                AND rc.document_type='RC' AND rc.status='PAID' AND rc.deleted_at IS NULL
+            ) payments ON TRUE
+            WHERE d.deleted_at IS NULL AND d.due_date < CURRENT_DATE AND d.status IN ('PENDING','APPROVED','PARTIALLY_PAID','OVERDUE')
             ORDER BY d.due_date LIMIT 8
         `),
         pool.query(`
@@ -97,15 +114,21 @@ router.get('/', authorize('dashboard.view'), asyncHandler(async (req, res) => {
         pool.query(`
             SELECT bucket, COALESCE(SUM(grand_total),0) AS total, COUNT(*)::integer AS count
             FROM (
-              SELECT grand_total,
+              SELECT GREATEST(d.grand_total - COALESCE(payments.paid_total,0),0) AS grand_total,
                 CASE
                   WHEN due_date IS NULL OR due_date >= CURRENT_DATE THEN 'not_due'
                   WHEN CURRENT_DATE - due_date <= 30 THEN 'days_1_30'
                   WHEN CURRENT_DATE - due_date <= 60 THEN 'days_31_60'
                   ELSE 'days_61_plus'
                 END AS bucket
-              FROM documents
-              WHERE document_type='IN' AND deleted_at IS NULL AND status IN ('PENDING','APPROVED','OVERDUE')
+              FROM documents d
+              LEFT JOIN LATERAL (
+                SELECT COALESCE(SUM(rc.grand_total),0) AS paid_total
+                FROM document_relations r JOIN documents rc ON rc.id=r.target_document_id
+                WHERE r.source_document_id=d.id AND r.relation_type='PAID_BY'
+                  AND rc.document_type='RC' AND rc.status='PAID' AND rc.deleted_at IS NULL
+              ) payments ON TRUE
+              WHERE d.document_type='IN' AND d.deleted_at IS NULL AND d.status IN ('PENDING','APPROVED','PARTIALLY_PAID','OVERDUE')
             ) x
             GROUP BY bucket`),
         pool.query(`

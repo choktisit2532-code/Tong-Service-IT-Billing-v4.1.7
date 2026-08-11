@@ -46,21 +46,57 @@ excelButton.addEventListener('click', async () => {
 });
 
 function summaryRows(doc) {
-  const rows = [['รวมเป็นเงิน', doc.subtotal]];
-  if (Number(doc.discount) > 0) rows.push(['ส่วนลด', `-${number(doc.discount)}`]);
-  if (doc.document_type === 'RC' && Number(doc.withholding_amount) > 0) {
-    rows.push([`หัก ณ ที่จ่ายจริง ${Number(doc.withholding_rate)}%`, `-${number(doc.withholding_amount)}`]);
+  const isRC = doc.document_type === 'RC';
+  const usesSourceDetails = isRC && doc.payment_summary && doc.receipt_source_items?.length;
+  const subtotal = usesSourceDetails ? doc.payment_summary.source_subtotal : doc.subtotal;
+  const discount = usesSourceDetails ? doc.payment_summary.source_discount : doc.discount;
+
+  const rows = [['รวมเป็นเงิน', subtotal]];
+  if (Number(discount) > 0) rows.push(['ส่วนลด', `-${number(discount)}`]);
+
+  if (usesSourceDetails) {
+    if (Number(doc.payment_summary.paid_before) > 0) {
+      rows.push(['ชำระก่อนหน้านี้', doc.payment_summary.paid_before]);
+    }
+    rows.push(['รับชำระครั้งนี้', doc.grand_total]);
+    if (Number(doc.withholding_amount) > 0) {
+      rows.push([`หัก ณ ที่จ่าย ${Number(doc.withholding_rate)}%`, `-${number(doc.withholding_amount)}`]);
+    }
+    if (Number(doc.transfer_fee) > 0) {
+      rows.push(['ค่าธรรมเนียมโอน', `-${number(doc.transfer_fee)}`]);
+    }
+    if (Number(doc.withholding_amount) > 0 || Number(doc.transfer_fee) > 0) {
+      rows.push(['ยอดรับสุทธิ', doc.net_total]);
+    }
+    rows.push(['ยอดคงเหลือ', doc.payment_summary.remaining_after]);
+  } else if (isRC && Number(doc.withholding_amount) > 0) {
+    rows.push([`หัก ณ ที่จ่าย ${Number(doc.withholding_rate)}%`, `-${number(doc.withholding_amount)}`]);
   }
-  if (Number(doc.transfer_fee) > 0) rows.push(['ค่าธรรมเนียมโอน', `-${number(doc.transfer_fee)}`]);
-  rows.push([
-    doc.document_type === 'RC' ? 'จำนวนเงินที่ได้รับจริง'
-      : doc.document_type === 'BN' ? 'ยอดรวมใบวางบิล'
-        : doc.document_type === 'IN' ? 'ยอดรวมใบแจ้งหนี้' : 'รวมสุทธิ',
-    doc.net_total
-  ]);
+
+  if (!usesSourceDetails && Number(doc.transfer_fee) > 0) {
+    rows.push(['ค่าธรรมเนียมโอน', `-${number(doc.transfer_fee)}`]);
+  }
+
+  if (!usesSourceDetails) {
+    rows.push([
+      isRC
+        ? (Number(doc.withholding_amount) > 0 || Number(doc.transfer_fee) > 0 ? 'ยอดรับสุทธิ' : 'จำนวนเงินที่รับ')
+        : doc.document_type === 'BN' ? 'ยอดรวมใบวางบิล'
+          : doc.document_type === 'IN' ? 'ยอดรวมใบแจ้งหนี้' : 'รวมสุทธิ',
+      doc.net_total
+    ]);
+  }
+
+  const leftCellContent = isRC
+    ? `<div class="rc-summary-left">
+        <div class="baht-text-main">(${thaiBahtText(doc.net_total)})</div>
+        ${receiptPaymentDetails(doc)}
+       </div>`
+    : thaiBahtText(doc.net_total);
+
   return rows.map(([label, value], index) => `
     <tr class="${index === rows.length - 1 ? 'net-row' : ''}">
-      ${index === 0 ? `<td colspan="4" rowspan="${rows.length}" class="baht-text-cell">${thaiBahtText(doc.net_total)}</td>` : ''}
+      ${index === 0 ? `<td colspan="4" rowspan="${rows.length}" class="baht-text-cell">${leftCellContent}</td>` : ''}
       <th class="summary-label">${escapeHtml(label)}</th>
       <td class="summary-value">${typeof value === 'string' && value.startsWith('-') ? value : number(value)}</td>
     </tr>`).join('');
@@ -75,10 +111,33 @@ function paymentBox(doc) {
 
 function receiptPaymentDetails(doc) {
   if (doc.document_type !== 'RC') return '';
-  const rows = [`<div><strong>วันที่รับเงินจริง:</strong> ${dateThai(doc.payment_received_date || doc.document_date)}</div>`];
-  if (doc.withholding_certificate_number) rows.push(`<div><strong>เลขที่หนังสือรับรองหัก ณ ที่จ่าย:</strong> ${escapeHtml(doc.withholding_certificate_number)}</div>`);
-  if (doc.withholding_certificate_date) rows.push(`<div><strong>วันที่หนังสือรับรอง:</strong> ${dateThai(doc.withholding_certificate_date)}</div>`);
-  return `<section class="payment-box"><strong>ข้อมูลการรับชำระ</strong>${rows.join('')}</section>`;
+  const paymentTypeLabels = {
+    DEPOSIT: 'มัดจำ',
+    PARTIAL: 'ชำระบางส่วน',
+    INSTALLMENT: 'ชำระตามงวด',
+    FULL: 'ชำระครบทั้งหมด'
+  };
+  const paymentMethodLabels = { CASH:'เงินสด', TRANSFER:'โอนเข้าบัญชี', CHECK:'เช็ค', OTHER:'อื่น ๆ' };
+  const paymentType = doc.receipt_payment_type || (doc.installment_number ? 'INSTALLMENT' : 'FULL');
+  const paymentMethod = doc.receipt_payment_method || 'TRANSFER';
+
+  const details = [];
+  if (doc.payment_summary?.source_number) {
+    details.push(`<div><strong>อ้างอิง:</strong> ${escapeHtml(doc.payment_summary.source_number)}</div>`);
+  }
+  details.push(`<div><strong>ช่องทาง:</strong> ${paymentMethodLabels[paymentMethod] || 'โอนเข้าบัญชี'} (${paymentTypeLabels[paymentType] || 'รับชำระ'})</div>`);
+  details.push(`<div><strong>วันที่รับชำระ:</strong> ${dateThai(doc.payment_received_date || doc.document_date)}</div>`);
+  if (doc.installment_number && doc.installment_count) {
+    details.push(`<div><strong>งวดที่:</strong> ${Number(doc.installment_number)}/${Number(doc.installment_count)}</div>`);
+  }
+  if (doc.withholding_certificate_number) {
+    details.push(`<div><strong>หนังสือหัก ณ ที่จ่าย:</strong> ${escapeHtml(doc.withholding_certificate_number)}</div>`);
+  }
+  if (doc.withholding_certificate_date) {
+    details.push(`<div><strong>วันที่หนังสือรับรอง:</strong> ${dateThai(doc.withholding_certificate_date)}</div>`);
+  }
+
+  return `<div class="rc-payment-info">${details.join('')}</div>`;
 }
 
 function signatures(doc) {
@@ -87,11 +146,10 @@ function signatures(doc) {
   const signature = source
     ? `<img class="signature-image" src="${escapeHtml(source)}" alt="ลายเซ็น" referrerpolicy="no-referrer" onerror="this.style.display='none'">`
     : '<div class="signature-placeholder"></div>';
-  const date = dateThai(doc.document_date);
-  if (doc.document_type === 'BN') return `<section class="signature-grid"><div class="signature-box"><strong>ผู้รับใบวางบิล / Recipient</strong><div>ลงชื่อ........................................<br>วันที่........................................</div></div><div class="signature-box"><strong>ผู้ออกใบวางบิล</strong>${signature}<div>ลงชื่อ........................................<br>วันที่ ${date}</div></div></section>`;
-  if (doc.document_type === 'DO') return `<section class="signature-grid"><div class="signature-box"><strong>ผู้รับของ / Receiver</strong><span>ได้รับสินค้าตามรายการถูกต้องแล้ว</span><div>ลงชื่อ........................................<br>วันที่........................................</div></div><div class="signature-box"><strong>ผู้ส่งของ / Delivered By</strong>${signature}<div>ลงชื่อ........................................<br>วันที่ ${date}</div></div></section>`;
+  if (doc.document_type === 'BN') return `<section class="signature-grid"><div class="signature-box"><strong>ผู้รับใบวางบิล / Recipient</strong><div>ลงชื่อ........................................</div></div><div class="signature-box"><strong>ผู้ออกใบวางบิล</strong>${signature}<div>ลงชื่อ........................................</div></div></section>`;
+  if (doc.document_type === 'DO') return `<section class="signature-grid"><div class="signature-box"><strong>ผู้รับของ / Receiver</strong><span>ได้รับสินค้าตามรายการถูกต้องแล้ว</span><div>ลงชื่อ........................................</div></div><div class="signature-box"><strong>ผู้ส่งของ / Delivered By</strong>${signature}<div>ลงชื่อ........................................</div></div></section>`;
   const label = doc.document_type === 'QT' ? 'ผู้เสนอราคา' : doc.document_type === 'RC' ? 'ผู้รับเงิน' : 'ผู้จัดทำเอกสาร';
-  return `<section class="signature-grid" style="grid-template-columns:1fr;max-width:50%;margin-left:auto"><div class="signature-box"><strong>${label}</strong>${signature}<div>ลงชื่อ........................................<br>${escapeHtml(doc.settings.shop_owner || doc.created_by_name || '')}<br>วันที่ ${date}</div></div></section>`;
+  return `<section class="signature-grid single-signature"><div class="signature-box"><strong>${label}</strong>${signature}<div>ลงชื่อ........................................<br>${escapeHtml(doc.settings.shop_owner || doc.created_by_name || '')}</div></div></section>`;
 }
 
 function rowUnits(item) {
@@ -101,7 +159,7 @@ function rowUnits(item) {
 }
 
 // Keeps the exact same page groups for on-screen preview, browser printing and PDF.
-function paginateItems(items) {
+function paginateItems(items, doc) {
   const pages = [];
   let page = [];
   let used = 0;
@@ -121,7 +179,7 @@ function paginateItems(items) {
   if (page.length || !pages.length) pages.push(page);
 
   // Reserve the last page for totals, conditions, payment details and signatures.
-  const footerUnits = 11;
+  const footerUnits = doc?.document_type === 'RC' ? 5.5 : 11;
   const lastCapacity = pages.length === 1 ? 18 : 27;
   const lastUnits = pages.at(-1).reduce((sum, item) => sum + rowUnits(item), 0);
   if (pages.at(-1).length > 1 && lastUnits + footerUnits > lastCapacity) {
@@ -150,9 +208,11 @@ function itemRows(items, startSequence) {
 
 function header(doc, pageNumber) {
   if (pageNumber > 1) return `<header class="continued-title"><strong>${DOC_LABELS[doc.document_type]} (ต่อ)</strong><span>${escapeHtml(doc.document_number)}</span></header>`;
+  const shopName = [doc.settings.shop_name_th, doc.settings.shop_name_en].filter(Boolean).join(' ');
+  const contactNumber = String(doc.settings.shop_phone || '0864733795').replace(/\D/g, '') || '0864733795';
   return `<header class="doc-header">
     <img class="doc-logo" src="${escapeHtml(doc.settings.logo_url || './assets/logo-placeholder.svg')}" alt="โลโก้" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src='./assets/logo-placeholder.svg'">
-    <div class="shop-info"><h1>${escapeHtml(doc.settings.shop_name_th)}</h1><p>${escapeHtml(doc.settings.shop_name_en)}</p><p>${escapeHtml(doc.settings.shop_address || '')}</p><p>เลขผู้เสียภาษี ${escapeHtml(doc.settings.shop_tax_id || '-')} · โทร ${escapeHtml(doc.settings.shop_phone || '-')}</p><p>${escapeHtml(doc.settings.shop_email || '')}</p></div>
+    <div class="shop-info"><h1>${escapeHtml(shopName)}</h1><p>${escapeHtml(doc.settings.shop_address || '')}</p><p>เลขผู้เสียภาษี ${escapeHtml(doc.settings.shop_tax_id || '-')} · โทร/ไอดีไลน์ ${escapeHtml(contactNumber)}</p></div>
     <div class="doc-title"><h2>${DOC_LABELS[doc.document_type]}</h2><strong>เลขที่ ${escapeHtml(doc.document_number)}</strong><span>วันที่ ${dateThai(doc.document_date)}</span></div>
   </header>`;
 }
@@ -172,13 +232,23 @@ function table(rows, footer = '') {
 }
 
 function finalBlocks(doc) {
-  const hasTerms = doc.remarks || doc.payment_terms || doc.delivery_days != null || doc.quotation_validity_days != null;
-  const terms = hasTerms ? `<section class="terms"><strong>หมายเหตุ / เงื่อนไข</strong>${doc.remarks ? `<div>${escapeHtml(doc.remarks).replaceAll('\n', '<br>')}</div>` : ''}${doc.payment_terms ? `<div>เงื่อนไขการชำระ: ${escapeHtml(doc.payment_terms)}</div>` : ''}${doc.delivery_days != null ? `<div>กำหนดส่งงานภายใน ${doc.delivery_days} วัน</div>` : ''}${doc.quotation_validity_days != null ? `<div>ราคานี้ยืนได้ ${doc.quotation_validity_days} วัน</div>` : ''}</section>` : '';
+  // ระยะเวลาราคายืนเป็นเงื่อนไขของใบเสนอราคาเท่านั้น ไม่ส่งต่อไปแสดงในเอกสารปลายทาง
+  const quotationValidity = doc.document_type === 'QT' && doc.quotation_validity_days != null
+    ? `<div>ราคานี้ยืนได้ ${doc.quotation_validity_days} วัน</div>`
+    : '';
+  const hasTerms = doc.remarks || doc.payment_terms || doc.delivery_days != null || quotationValidity;
+  const terms = hasTerms ? `<section class="terms"><strong>หมายเหตุ / เงื่อนไข</strong>${doc.remarks ? `<div>${escapeHtml(doc.remarks).replaceAll('\n', '<br>')}</div>` : ''}${doc.payment_terms ? `<div>เงื่อนไขการชำระ: ${escapeHtml(doc.payment_terms)}</div>` : ''}${doc.delivery_days != null ? `<div>กำหนดส่งงานภายใน ${doc.delivery_days} วัน</div>` : ''}${quotationValidity}</section>` : '';
+  if (doc.document_type === 'RC') {
+    return `${terms}${signatures(doc)}`;
+  }
   return `${terms}${paymentBox(doc)}${receiptPaymentDetails(doc)}${signatures(doc)}`;
 }
 
 function renderPages(doc) {
-  const groups = paginateItems(doc.items);
+  const displayItems = doc.document_type === 'RC' && doc.receipt_source_items?.length
+    ? doc.receipt_source_items
+    : doc.items;
+  const groups = paginateItems(displayItems, doc);
   const totalPages = groups.length;
   let sequence = 0;
   root.dataset.documentType = doc.document_type;
@@ -197,7 +267,7 @@ function renderPages(doc) {
   pageCount.textContent = `ตัวอย่าง A4: ${totalPages} หน้า`;
   pageWarning.classList.toggle('hidden', totalPages === 1);
   pageWarning.innerHTML = totalPages > 1
-    ? `เอกสารนี้มี <strong>${doc.items.length} รายการ</strong> และใช้กระดาษ A4 จำนวน <strong>${totalPages} หน้า</strong> ระบบแบ่งหน้าให้อัตโนมัติโดยไม่ลบข้อมูล หากต้องการหน้าเดียว กรุณากลับไปรวบรายการ หรือส่งออก Excel เพื่อจัดรูปแบบสำเนาเอง`
+    ? `เอกสารนี้มี <strong>${displayItems.length} รายการ</strong> และใช้กระดาษ A4 จำนวน <strong>${totalPages} หน้า</strong> ระบบแบ่งหน้าให้อัตโนมัติโดยไม่ลบข้อมูล หากต้องการหน้าเดียว กรุณากลับไปรวบรายการ หรือส่งออก Excel เพื่อจัดรูปแบบสำเนาเอง`
     : '';
 }
 

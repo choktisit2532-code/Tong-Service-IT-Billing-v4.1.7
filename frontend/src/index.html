@@ -59,8 +59,9 @@
           <input id="email" name="email" type="email" autocomplete="username" placeholder="admin@example.com" required>
         </label>
         <label>รหัสผ่าน
-          <input id="password" name="password" type="password" autocomplete="current-password" minlength="8" required>
+          <span class="password-control"><input id="password" name="password" type="password" autocomplete="current-password" minlength="8" required><button id="password-visibility" type="button" class="password-visibility" aria-label="แสดงรหัสผ่าน">👁</button></span>
         </label>
+        <button id="forgot-password" class="link-button" type="button">ลืมรหัสผ่าน?</button>
         <button id="login-button" class="btn btn-primary btn-block" type="submit">เข้าสู่ระบบ</button>
       </form>
       <p class="login-note">ระบบจัดการบัญชีและเอกสาร</p>

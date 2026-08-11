@@ -1,5 +1,5 @@
 export const DOC_LABELS = { QT:'ใบเสนอราคา', IN:'ใบแจ้งหนี้', BN:'ใบวางบิล', RC:'ใบเสร็จรับเงิน', DO:'ใบส่งของ / ส่งมอบงาน' };
-export const STATUS_LABELS = { DRAFT:'แบบร่าง', PENDING:'รอดำเนินการ', APPROVED:'อนุมัติแล้ว', IN_PROGRESS:'กำลังดำเนินงาน', REJECTED:'ลูกค้าไม่อนุมัติ', PAID:'ชำระแล้ว', OVERDUE:'เกินกำหนด', CANCELLED:'ยกเลิก' };
+export const STATUS_LABELS = { DRAFT:'แบบร่าง', PENDING:'รอดำเนินการ', APPROVED:'อนุมัติแล้ว', IN_PROGRESS:'กำลังดำเนินงาน', REJECTED:'ลูกค้าไม่อนุมัติ', PARTIALLY_PAID:'ชำระบางส่วน', PAID:'ชำระแล้ว', OVERDUE:'เกินกำหนด', CANCELLED:'ยกเลิก' };
 export const CUSTOMER_TYPE_LABELS = { general:'บุคคลทั่วไป', private:'บริษัทเอกชน', government:'หน่วยงานราชการ' };
 export const ITEM_TYPE_LABELS = { product:'สินค้า/อะไหล่', service:'ค่าแรง/บริการ', travel:'ค่าเดินทาง', other:'อื่น ๆ' };
 export const ROLE_LABELS = { admin:'ผู้ดูแลระบบ', staff:'พนักงาน', viewer:'ผู้ตรวจสอบ' };

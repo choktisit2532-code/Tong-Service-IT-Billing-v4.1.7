@@ -43,6 +43,53 @@ test('RC accepts at most one source document in guided workflow', () => {
     assert.equal(result.success, false);
 });
 
+test('RC with an invoice source requires the amount paid this time', () => {
+    const result = documentCreateSchema.safeParse({ ...base, document_type: 'RC', source_document_ids: [1], items: [] });
+    assert.equal(result.success, false);
+    assert.equal(result.error.issues.some((issue) => issue.path[0] === 'receipt_payment_amount'), true);
+});
+
+test('RC accepts a partial installment payment', () => {
+    const result = documentCreateSchema.safeParse({
+        ...base,
+        document_type: 'RC',
+        source_document_ids: [1],
+        items: [],
+        receipt_payment_amount: 50000,
+        receipt_payment_type: 'INSTALLMENT',
+        installment_number: 1,
+        installment_count: 2
+    });
+    assert.equal(result.success, true);
+});
+
+test('RC installment requires installment details', () => {
+    const result = documentCreateSchema.safeParse({
+        ...base,
+        document_type: 'RC',
+        source_document_ids: [1],
+        items: [],
+        receipt_payment_amount: 500,
+        receipt_payment_type: 'INSTALLMENT'
+    });
+    assert.equal(result.success, false);
+    assert.equal(result.error.issues.some((issue) => issue.path[0] === 'installment_number'), true);
+});
+
+test('RC accepts a deposit payment', () => {
+    const result = documentCreateSchema.safeParse({
+        ...base,
+        document_type: 'RC',
+        source_document_ids: [1],
+        items: [],
+        receipt_payment_amount: 500,
+        receipt_payment_type: 'DEPOSIT',
+        receipt_payment_method: 'CASH'
+    });
+    assert.equal(result.success, true);
+    assert.equal(result.data.receipt_payment_method, 'CASH');
+});
+
 
 test('signature is optional and defaults to hidden', () => {
     const result = documentCreateSchema.safeParse({

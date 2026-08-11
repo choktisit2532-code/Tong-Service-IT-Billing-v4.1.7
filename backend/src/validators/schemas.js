@@ -43,6 +43,8 @@ const loginSchema = z.object({
 });
 
 const idSchema = z.object({ id: z.coerce.number().int().positive() });
+const passwordResetRequestSchema = z.object({ email: z.string().trim().email().max(255) });
+const passwordResetConfirmSchema = z.object({ token: z.string().length(64), password: passwordSchema });
 const paginationSchema = z.object({
     search: z.string().trim().max(200).default(''),
     page: z.coerce.number().int().min(1).default(1),
@@ -109,6 +111,11 @@ const documentCreateSchema = z.object({
     receipt_withholding_rate: decimalInput.optional(),
     receipt_withholding_amount: decimalInput.optional(),
     receipt_transfer_fee: decimalInput.optional(),
+    receipt_payment_amount: positiveDecimalInput.optional(),
+    receipt_payment_type: z.enum(['DEPOSIT', 'PARTIAL', 'INSTALLMENT', 'FULL']).optional(),
+    receipt_payment_method: z.enum(['CASH', 'TRANSFER', 'CHECK', 'OTHER']).optional(),
+    installment_number: z.coerce.number().int().min(1).max(999).nullable().optional(),
+    installment_count: z.coerce.number().int().min(1).max(999).nullable().optional(),
     payment_received_date: z.union([dateInput, z.literal(''), z.null()]).optional().transform((v) => v || null),
     withholding_certificate_number: optionalText(120),
     withholding_certificate_date: z.union([dateInput, z.literal(''), z.null()]).optional().transform((v) => v || null),
@@ -131,6 +138,16 @@ const documentCreateSchema = z.object({
     if (data.document_type !== 'BN' && data.source_document_ids.length > 1) {
         ctx.addIssue({ code: 'custom', path: ['source_document_ids'], message: 'เอกสารประเภทนี้เลือกเอกสารต้นทางได้เพียง 1 ใบ' });
     }
+    if (data.document_type === 'RC' && data.source_document_ids.length > 0 && data.receipt_payment_amount == null) {
+        ctx.addIssue({ code: 'custom', path: ['receipt_payment_amount'], message: 'กรุณาระบุยอดที่รับชำระครั้งนี้' });
+    }
+    if (data.installment_number && data.installment_count && data.installment_number > data.installment_count) {
+        ctx.addIssue({ code: 'custom', path: ['installment_number'], message: 'งวดปัจจุบันต้องไม่มากกว่าจำนวนงวดทั้งหมด' });
+    }
+    if (data.document_type === 'RC' && data.receipt_payment_type === 'INSTALLMENT'
+        && (!data.installment_number || !data.installment_count)) {
+        ctx.addIssue({ code: 'custom', path: ['installment_number'], message: 'กรุณาระบุงวดปัจจุบันและจำนวนงวดทั้งหมด' });
+    }
 });
 
 const documentUpdateSchema = z.object({
@@ -147,6 +164,11 @@ const documentUpdateSchema = z.object({
     receipt_withholding_rate: decimalInput.optional(),
     receipt_withholding_amount: decimalInput.optional(),
     receipt_transfer_fee: decimalInput.optional(),
+    receipt_payment_amount: positiveDecimalInput.optional(),
+    receipt_payment_type: z.enum(['DEPOSIT', 'PARTIAL', 'INSTALLMENT', 'FULL']).optional(),
+    receipt_payment_method: z.enum(['CASH', 'TRANSFER', 'CHECK', 'OTHER']).optional(),
+    installment_number: z.coerce.number().int().min(1).max(999).nullable().optional(),
+    installment_count: z.coerce.number().int().min(1).max(999).nullable().optional(),
     payment_received_date: z.union([dateInput, z.literal(''), z.null()]).optional().transform((v) => v || null),
     withholding_certificate_number: optionalText(120),
     withholding_certificate_date: z.union([dateInput, z.literal(''), z.null()]).optional().transform((v) => v || null),
@@ -155,6 +177,10 @@ const documentUpdateSchema = z.object({
 }).superRefine((data, ctx) => {
     if (data.due_date && data.due_date < data.document_date) {
         ctx.addIssue({ code: 'custom', path: ['due_date'], message: 'วันครบกำหนดต้องไม่ก่อนวันที่เอกสาร' });
+    }
+    if (data.document_type === 'RC' && data.receipt_payment_type === 'INSTALLMENT'
+        && (!data.installment_number || !data.installment_count)) {
+        ctx.addIssue({ code: 'custom', path: ['installment_number'], message: 'กรุณาระบุงวดปัจจุบันและจำนวนงวดทั้งหมด' });
     }
 });
 
@@ -165,16 +191,33 @@ const documentMetadataSchema = z.object({
     payment_terms: optionalText(1000),
     quotation_validity_days: z.coerce.number().int().min(0).max(3650).nullable().optional(),
     show_signature: z.boolean().default(false),
-    recalculate_due_date: z.boolean().optional().default(false)
+    recalculate_due_date: z.boolean().optional().default(false),
+    receipt_withholding_enabled: z.boolean().optional(),
+    receipt_withholding_rate: decimalInput.optional(),
+    receipt_withholding_amount: decimalInput.optional(),
+    receipt_transfer_fee: decimalInput.optional(),
+    receipt_payment_type: z.enum(['DEPOSIT', 'PARTIAL', 'INSTALLMENT', 'FULL']).optional(),
+    receipt_payment_method: z.enum(['CASH', 'TRANSFER', 'CHECK', 'OTHER']).optional(),
+    installment_number: z.coerce.number().int().min(1).max(999).nullable().optional(),
+    installment_count: z.coerce.number().int().min(1).max(999).nullable().optional(),
+    payment_received_date: z.union([dateInput, z.literal(''), z.null()]).optional().transform((v) => v || null),
+    withholding_certificate_number: optionalText(120),
+    withholding_certificate_date: z.union([dateInput, z.literal(''), z.null()]).optional().transform((v) => v || null)
 }).superRefine((data, ctx) => {
     if (data.due_date && data.due_date < data.document_date) {
         ctx.addIssue({ code: 'custom', path: ['due_date'], message: 'วันครบกำหนดต้องไม่ก่อนวันที่เอกสาร' });
+    }
+    if (data.receipt_payment_type === 'INSTALLMENT' && (!data.installment_number || !data.installment_count)) {
+        ctx.addIssue({ code: 'custom', path: ['installment_number'], message: 'กรุณาระบุงวดปัจจุบันและจำนวนงวดทั้งหมด' });
+    }
+    if (data.installment_number && data.installment_count && data.installment_number > data.installment_count) {
+        ctx.addIssue({ code: 'custom', path: ['installment_number'], message: 'งวดปัจจุบันต้องไม่มากกว่าจำนวนงวดทั้งหมด' });
     }
 });
 
 const documentListSchema = paginationSchema.extend({
     type: z.enum(['QT', 'IN', 'BN', 'RC', 'DO']).optional(),
-    status: z.enum(['DRAFT', 'PENDING', 'APPROVED', 'IN_PROGRESS', 'REJECTED', 'PAID', 'CANCELLED', 'OVERDUE']).optional(),
+    status: z.enum(['DRAFT', 'PENDING', 'APPROVED', 'IN_PROGRESS', 'REJECTED', 'PARTIALLY_PAID', 'PAID', 'CANCELLED', 'OVERDUE']).optional(),
     customer_id: z.coerce.number().int().positive().optional(),
     month: z.string().regex(/^\d{4}-\d{2}$/).optional(),
     deleted_only: z.enum(['true', 'false']).optional().transform((value) => value === 'true')
@@ -236,5 +279,5 @@ module.exports = {
     loginSchema, idSchema, paginationSchema, masterDataListSchema, customerSchema, productSchema,
     documentCreateSchema, documentUpdateSchema, documentMetadataSchema, documentListSchema, documentStatusSchema,
     documentReasonSchema, sourceQuerySchema, monthSchema, settingsSchema, userCreateSchema,
-    passwordSchema, userPasswordResetSchema
+    passwordSchema, userPasswordResetSchema, passwordResetRequestSchema, passwordResetConfirmSchema
 };

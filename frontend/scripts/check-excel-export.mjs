@@ -65,7 +65,18 @@ function documentFixture(documentType) {
 const imageResolver = async () => null;
 let receiptWorkbook;
 for (const type of Object.keys(typeTotals)) {
-  const workbook = await buildExcelWorkbook(documentFixture(type), { ExcelJS, imageResolver });
+  const fixture = documentFixture(type);
+  if (type === 'RC') {
+    fixture.grand_total = 500;
+    fixture.net_total = 400;
+    fixture.receipt_source_items = fixture.items.map((item) => ({ ...item }));
+    fixture.receipt_source_items[1].description = 'รายละเอียดจากใบแจ้งหนี้ต้นทาง';
+    fixture.payment_summary = {
+      source_number:'IN-6908-001', source_subtotal:3000, source_discount:0,
+      source_total:3000, paid_before:0, current_payment:500, remaining_after:2500
+    };
+  }
+  const workbook = await buildExcelWorkbook(fixture, { ExcelJS, imageResolver });
   const sheet = workbook.worksheets[0];
   assert.equal(sheet.pageSetup.paperSize, 9);
   assert.equal(sheet.pageSetup.orientation, 'portrait');
@@ -82,6 +93,12 @@ for (const type of Object.keys(typeTotals)) {
   assert.equal(sheet.getCell('A12').value, 'ลำดับ');
   assert.equal(sheet.getCell('F14').value.formula, 'IF(OR(C14="",E14=""),"",C14*E14)');
   assert.ok(sheet.getCell('F19').value.formula?.startsWith('SUM('));
+  if (type === 'RC') {
+    assert.equal(sheet.getCell('B14').value, 'รายละเอียดจากใบแจ้งหนี้ต้นทาง');
+    const allText = [];
+    sheet.eachRow((row) => row.eachCell((cell) => allText.push(String(cell.value || ''))));
+    assert.ok(allText.some((value) => value.includes('ยอดชำระครั้งนี้: 500.00 บาท')));
+  }
   const bytes = await workbook.xlsx.writeBuffer();
   assert.ok(bytes.byteLength > 5_000);
   if (type === 'RC') receiptWorkbook = workbook;

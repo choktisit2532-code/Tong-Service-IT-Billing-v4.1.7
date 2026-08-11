@@ -31,6 +31,10 @@ const schema = z.object({
 
     JWT_SECRET: z.string().min(32),
     JWT_EXPIRES_IN: z.string().default('7d'),
+    RESEND_API_KEY: z.string().startsWith('re_').optional(),
+    EMAIL_FROM: z.string().email().default('onboarding@resend.dev'),
+    APP_BASE_URL: z.string().url().default('http://localhost:5500'),
+    PASSWORD_RESET_RECOVERY_EMAIL: z.string().email().optional(),
 
     CORS_ORIGINS: nonEmptyCsv.default('http://localhost:5500,http://127.0.0.1:5500'),
     REQUEST_BODY_LIMIT: z.string().default('3mb'),
@@ -89,6 +93,10 @@ module.exports = {
     transactionLockTimeoutMs: parsed.data.TRANSACTION_LOCK_TIMEOUT_MS,
     jwtSecret: parsed.data.JWT_SECRET,
     jwtExpiresIn: parsed.data.JWT_EXPIRES_IN,
+    resendApiKey: parsed.data.RESEND_API_KEY,
+    emailFrom: parsed.data.EMAIL_FROM,
+    appBaseUrl: parsed.data.APP_BASE_URL.replace(/\/$/, ''),
+    passwordResetRecoveryEmail: parsed.data.PASSWORD_RESET_RECOVERY_EMAIL,
     corsOrigins: parsed.data.CORS_ORIGINS,
     requestBodyLimit: parsed.data.REQUEST_BODY_LIMIT,
     rateLimitWindowMs: parsed.data.RATE_LIMIT_WINDOW_MS,

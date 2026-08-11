@@ -29,6 +29,7 @@ const REQUIRED_COLUMNS = {
         'cancellation_reason', 'deleted_at', 'deleted_by', 'deletion_reason',
         'withholding_is_actual', 'payment_received_date',
         'withholding_certificate_number', 'withholding_certificate_date',
+        'installment_number', 'installment_count', 'receipt_payment_type', 'receipt_payment_method',
         'show_signature', 'created_at', 'updated_at'
     ],
     document_items: ['id', 'document_id', 'sort_order', 'line_type', 'item_type', 'product_id', 'description', 'quantity', 'unit', 'unit_price', 'line_total', 'text_style', 'created_at'],

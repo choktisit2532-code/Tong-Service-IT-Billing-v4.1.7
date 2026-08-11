@@ -24,6 +24,14 @@ for (const id of requiredIds) {
 }
 
 if (!appJs.includes("label: 'ยืนยันรับชำระ'")) throw new Error('Missing receipt payment confirmation action');
+if (!html.includes('id="doc-receipt-payment-amount"')) throw new Error('Missing partial payment amount input');
+if (!html.includes('id="doc-installment-count"')) throw new Error('Missing installment count input');
+if (!html.includes('name="doc-receipt-payment-type"')) throw new Error('Missing receipt payment type choices');
+if (!html.includes('name="doc-receipt-payment-method"')) throw new Error('Missing receipt payment method choices');
+if (!appJs.includes('RECEIPT_PAYMENT_METHOD_LABELS')) throw new Error('Receipt payment method labels are not wired');
+if (!html.includes('id="receipt-installment-warning"')) throw new Error('Missing previous-installment warning');
+if (!appJs.includes('updateReceiptBalanceFromSelection({ preserveAmount: true })')) throw new Error('Receipt balance does not update from the current amount');
+if (!printJs.includes('doc.receipt_source_items') || !excelJs.includes('doc.receipt_source_items')) throw new Error('Receipt output does not reuse source document item details');
 if (!appJs.includes('preserveEditingDocumentCustomer(doc)')) throw new Error('Editing a document does not preserve its original customer');
 if (!appJs.includes('editingOriginalCustomerId')) throw new Error('Missing original customer fallback for document editing');
 if (appJs.includes("customer_id: Number($('#doc-customer').value)")) throw new Error('Document save can still send customer_id=0 from an empty select');

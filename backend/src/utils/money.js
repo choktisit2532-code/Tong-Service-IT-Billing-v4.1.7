@@ -16,7 +16,9 @@ function customerWithholdingEstimate({ customer, grandTotal, serviceSubtotal, di
 
     if (
         customer.withholding_enabled
-        && decimal(grandTotal).gt(customer.withholding_threshold || 0)
+        && (customer.customer_type === 'government'
+            ? decimal(grandTotal).gte(customer.withholding_threshold || 0)
+            : decimal(grandTotal).gt(customer.withholding_threshold || 0))
         && customer.withholding_basis !== 'none'
     ) {
         rate = decimal(customer.withholding_rate || 0);

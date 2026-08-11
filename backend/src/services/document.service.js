@@ -44,35 +44,26 @@ async function calculateTotalsSafely(input) {
     }
 }
 
-async function assertReceiptSourcesAvailable(client, sourceIds) {
-    if (!sourceIds.length) return;
-
+async function getReceiptSourceBalance(client, sourceId) {
     const result = await client.query(
-        `SELECT
-            src.document_number AS source_number,
-            rc.document_number AS receipt_number
-         FROM document_relations r
-         JOIN documents src ON src.id = r.source_document_id
-         JOIN documents rc ON rc.id = r.target_document_id
-         WHERE r.source_document_id = ANY($1::bigint[])
-           AND r.relation_type = 'PAID_BY'
-           AND rc.document_type = 'RC'
-           AND rc.deleted_at IS NULL
-           AND rc.status <> 'CANCELLED'
-         LIMIT 20`,
-        [sourceIds]
+        `SELECT src.grand_total,
+                COALESCE(SUM(rc.grand_total) FILTER (
+                    WHERE rc.deleted_at IS NULL AND rc.status <> 'CANCELLED'
+                ), 0) AS allocated_total
+         FROM documents src
+         LEFT JOIN document_relations r
+           ON r.source_document_id = src.id AND r.relation_type = 'PAID_BY'
+         LEFT JOIN documents rc
+           ON rc.id = r.target_document_id AND rc.document_type = 'RC'
+         WHERE src.id = $1
+         GROUP BY src.id, src.grand_total`,
+        [sourceId]
     );
-
-    if (result.rows.length) {
-        const details = result.rows
-            .map((row) => `${row.source_number} ชำระแล้วโดย ${row.receipt_number}`)
-            .join(', ');
-        throw new AppError(
-            409,
-            `เอกสารต้นทางบางรายการถูกออกใบเสร็จแล้ว: ${details}`,
-            'SOURCE_ALREADY_RECEIPTED'
-        );
-    }
+    const row = result.rows[0];
+    if (!row) throw new AppError(404, 'ไม่พบเอกสารต้นทาง', 'SOURCE_DOCUMENT_NOT_FOUND');
+    const total = Number(row.grand_total || 0);
+    const allocated = Number(row.allocated_total || 0);
+    return { total, allocated, remaining: Math.max(total - allocated, 0) };
 }
 
 async function getSettings(client = pool, { includeLogo = true } = {}) {
@@ -91,13 +82,22 @@ async function nextDocumentNumber(client, documentType, documentDate, numberingC
         separator: '-'
     };
     const periodKey = formatPeriod(documentDate, config.period);
+    const escapedPrefix = String(config.prefix).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapedSeparator = String(config.separator).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapedPeriod = String(periodKey).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const numberPattern = `^${escapedPrefix}(\\d{${config.digits}})${escapedSeparator}${escapedPeriod}$`;
     const counterResult = await client.query(
-        `INSERT INTO document_counters (document_type, period_key, last_number)
-         VALUES ($1, $2, 1)
+        `WITH existing AS (
+            SELECT COALESCE(MAX((regexp_match(document_number, $3))[1]::integer), 0) AS max_number
+            FROM documents
+            WHERE document_type = $1
+         )
+         INSERT INTO document_counters (document_type, period_key, last_number)
+         VALUES ($1, $2, (SELECT GREATEST(1, max_number + 1) FROM existing))
          ON CONFLICT (document_type, period_key)
-         DO UPDATE SET last_number = document_counters.last_number + 1, updated_at = NOW()
+         DO UPDATE SET last_number = GREATEST(document_counters.last_number + 1, (SELECT max_number + 1 FROM existing)), updated_at = NOW()
          RETURNING last_number`,
-        [documentType, periodKey]
+        [documentType, periodKey, numberPattern]
     );
     return formatDocumentNumber({
         config,
@@ -149,15 +149,52 @@ function aggregateSourceItems(sourceDocuments, label) {
     }));
 }
 
+const receiptPaymentDescriptions = {
+    DEPOSIT: 'รับเงินมัดจำ',
+    PARTIAL: 'รับชำระบางส่วน',
+    INSTALLMENT: 'รับชำระตามงวด',
+    FULL: 'รับชำระครบทั้งหมด'
+};
+
+function normalizeReceiptPaymentType(body) {
+    if (receiptPaymentDescriptions[body.receipt_payment_type]) return body.receipt_payment_type;
+    return body.installment_number || body.installment_count ? 'INSTALLMENT' : 'FULL';
+}
+
+const receiptPaymentMethods = new Set(['CASH', 'TRANSFER', 'CHECK', 'OTHER']);
+
+function normalizeReceiptPaymentMethod(body) {
+    return receiptPaymentMethods.has(body.receipt_payment_method)
+        ? body.receipt_payment_method
+        : 'TRANSFER';
+}
+
+function receiptTransferFee(body) {
+    return normalizeReceiptPaymentMethod(body) === 'TRANSFER'
+        ? body.receipt_transfer_fee
+        : 0;
+}
+
 async function resolveItems(client, body, sources) {
+    if (body.document_type === 'RC' && sources.length === 1 && Number(body.receipt_payment_amount || 0) > 0) {
+        const paymentType = normalizeReceiptPaymentType(body);
+        const installment = body.installment_number && body.installment_count
+            ? ` งวด ${body.installment_number}/${body.installment_count}`
+            : '';
+        return [{
+            line_type: 'item', item_type: 'service', product_id: null,
+            description: `${receiptPaymentDescriptions[paymentType]}${paymentType === 'INSTALLMENT' ? installment : ''} ตามเอกสาร ${sources[0].document_number}`,
+            quantity: '1', unit: 'ครั้ง', unit_price: Number(body.receipt_payment_amount), text_style: 'normal'
+        }];
+    }
     if (body.items.length) return body.items;
     if (!sources.length) return [];
 
     if (body.document_type === 'BN') {
         return aggregateSourceItems(sources, 'ยอดตามใบแจ้งหนี้');
     }
-    if (body.document_type === 'RC' && sources.length > 1) {
-        return aggregateSourceItems(sources, 'รับชำระตามเอกสาร');
+    if (body.document_type === 'RC') {
+        if (sources.length > 1) return aggregateSourceItems(sources, 'รับชำระตามเอกสาร');
     }
     return getItemsForDocument(client, sources[0].id);
 }
@@ -201,6 +238,20 @@ function isFinancialOrStructureModified(body, current, dbItems) {
     }
     
     if (current.document_type === 'RC') {
+        const bodyPaymentType = normalizeReceiptPaymentType(body);
+        const currentPaymentType = current.receipt_payment_type || (current.installment_number ? 'INSTALLMENT' : 'FULL');
+        if (bodyPaymentType !== currentPaymentType) {
+            return { modified: true, reason: `receipt_payment_type mismatch: body=${bodyPaymentType} current=${currentPaymentType}` };
+        }
+        if (Number(body.installment_number || 0) !== Number(current.installment_number || 0)
+            || Number(body.installment_count || 0) !== Number(current.installment_count || 0)) {
+            return { modified: true, reason: 'installment details mismatch' };
+        }
+        const bodyPaymentMethod = normalizeReceiptPaymentMethod(body);
+        const currentPaymentMethod = current.receipt_payment_method || 'TRANSFER';
+        if (bodyPaymentMethod !== currentPaymentMethod) {
+            return { modified: true, reason: `receipt_payment_method mismatch: body=${bodyPaymentMethod} current=${currentPaymentMethod}` };
+        }
         const bodyWithholdingEnabled = Boolean(body.receipt_withholding_enabled);
         const currentWithholdingEnabled = Boolean(current.withholding_is_actual);
         if (bodyWithholdingEnabled !== currentWithholdingEnabled) {
@@ -699,18 +750,29 @@ async function refreshSourceWorkflowAfterTargetChange(client, targetId, userId) 
         if (source.document_type === 'IN') {
             await client.query(
                 `UPDATE documents inv
-                 SET status = CASE WHEN EXISTS (
-                     SELECT 1
+                 SET status = CASE
+                   WHEN COALESCE((
+                     SELECT SUM(rc.grand_total)
                      FROM document_relations r
                      JOIN documents rc ON rc.id = r.target_document_id
                      WHERE r.source_document_id = inv.id
                        AND r.relation_type = 'PAID_BY'
                        AND rc.document_type = 'RC'
                        AND rc.deleted_at IS NULL
-                       AND rc.status <> 'CANCELLED'
-                 ) THEN 'PAID'
-                 WHEN inv.due_date IS NOT NULL AND inv.due_date < CURRENT_DATE THEN 'OVERDUE'
-                 ELSE 'PENDING' END,
+                       AND rc.status = 'PAID'
+                   ), 0) >= inv.grand_total THEN 'PAID'
+                   WHEN COALESCE((
+                     SELECT SUM(rc.grand_total)
+                     FROM document_relations r
+                     JOIN documents rc ON rc.id = r.target_document_id
+                     WHERE r.source_document_id = inv.id
+                       AND r.relation_type = 'PAID_BY'
+                       AND rc.document_type = 'RC'
+                       AND rc.deleted_at IS NULL
+                       AND rc.status = 'PAID'
+                   ), 0) > 0 THEN 'PARTIALLY_PAID'
+                   WHEN inv.due_date IS NOT NULL AND inv.due_date < CURRENT_DATE THEN 'OVERDUE'
+                   ELSE 'PENDING' END,
                  updated_by = $1
                  WHERE inv.id = $2 AND inv.deleted_at IS NULL AND inv.status <> 'CANCELLED'`,
                 [userId, source.id]
@@ -820,7 +882,27 @@ async function createDocument({ body, userId }) {
             await assertBillingInvoicesAvailable(client, sourceDocumentIds);
         }
         if (body.document_type === 'RC') {
-            await assertReceiptSourcesAvailable(client, sourceDocumentIds);
+            if (sources.length === 1) {
+                const balance = await getReceiptSourceBalance(client, sources[0].id);
+                const paymentAmount = Number(body.receipt_payment_amount || 0);
+                const paymentType = normalizeReceiptPaymentType(body);
+                if (!(paymentAmount > 0)) {
+                    throw new AppError(400, 'กรุณาระบุยอดที่รับชำระครั้งนี้', 'PAYMENT_AMOUNT_REQUIRED');
+                }
+                if (paymentAmount > balance.remaining + 0.005) {
+                    throw new AppError(
+                        409,
+                        `ยอดรับชำระเกินยอดคงเหลือ ${balance.remaining.toFixed(2)} บาท`,
+                        'PAYMENT_EXCEEDS_BALANCE'
+                    );
+                }
+                if (body.receipt_payment_type === 'FULL' && Math.abs(paymentAmount - balance.remaining) > 0.005) {
+                    throw new AppError(409, 'การชำระครบต้องใช้ยอดคงเหลือทั้งหมด', 'FULL_PAYMENT_AMOUNT_REQUIRED');
+                }
+                if (paymentType === 'INSTALLMENT' && Number(body.installment_number) > 1 && balance.allocated <= 0) {
+                    throw new AppError(409, 'ยังไม่พบการชำระงวดก่อนหน้า กรุณาบันทึกงวดที่ 1 ก่อน หรือเปลี่ยนเป็นชำระบางส่วน', 'PREVIOUS_INSTALLMENT_REQUIRED');
+                }
+            }
         }
 
         const resolvedItems = await resolveItems(client, body, sources);
@@ -837,7 +919,7 @@ async function createDocument({ body, userId }) {
                 withholding_enabled: body.receipt_withholding_enabled,
                 withholding_rate: body.receipt_withholding_rate,
                 withholding_amount: body.receipt_withholding_amount,
-                transfer_fee: body.receipt_transfer_fee
+                transfer_fee: receiptTransferFee(body)
             } : null
         });
         const settings = await getSettings(client, { includeLogo: false });
@@ -857,13 +939,13 @@ async function createDocument({ body, userId }) {
                 transfer_fee, net_total, payment_received_date,
                 withholding_certificate_number, withholding_certificate_date,
                 remarks, payment_terms, delivery_days, quotation_validity_days,
-                show_signature, created_by, updated_by
+                show_signature, installment_number, installment_count, receipt_payment_type, receipt_payment_method, created_by, updated_by
              ) VALUES (
                 $1,
                 $2::varchar(2),
                 'PENDING',
                 $3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
-                $19,$20,$21,$22,$23,$24,$25,$26,$27,$27
+                $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$31
              ) RETURNING *`,
             [
                 documentNumber,
@@ -898,6 +980,10 @@ async function createDocument({ body, userId }) {
                 body.delivery_days ?? null,
                 body.quotation_validity_days ?? null,
                 Boolean(body.show_signature),
+                body.document_type === 'RC' ? (body.installment_number ?? null) : null,
+                body.document_type === 'RC' ? (body.installment_count ?? null) : null,
+                body.document_type === 'RC' ? normalizeReceiptPaymentType(body) : null,
+                body.document_type === 'RC' ? normalizeReceiptPaymentMethod(body) : null,
                 userId
             ]
         );
@@ -994,7 +1080,7 @@ async function updateDocument({ id, body, userId, role }) {
                 withholding_enabled: body.receipt_withholding_enabled,
                 withholding_rate: body.receipt_withholding_rate,
                 withholding_amount: body.receipt_withholding_amount,
-                transfer_fee: body.receipt_transfer_fee
+                transfer_fee: receiptTransferFee(body)
             } : null
         });
 
@@ -1024,8 +1110,12 @@ async function updateDocument({ id, body, userId, role }) {
                 delivery_days = $22,
                 quotation_validity_days = $23,
                 show_signature = $24,
-                updated_by = $25
-             WHERE id = $26`,
+                receipt_payment_type = $25,
+                receipt_payment_method = $26,
+                installment_number = $27,
+                installment_count = $28,
+                updated_by = $29
+             WHERE id = $30`,
             [
                 body.document_date,
                 body.due_date,
@@ -1057,6 +1147,10 @@ async function updateDocument({ id, body, userId, role }) {
                 body.delivery_days ?? null,
                 body.quotation_validity_days ?? null,
                 Boolean(body.show_signature),
+                current.document_type === 'RC' ? normalizeReceiptPaymentType(body) : null,
+                current.document_type === 'RC' ? normalizeReceiptPaymentMethod(body) : null,
+                current.document_type === 'RC' ? (body.installment_number ?? null) : null,
+                current.document_type === 'RC' ? (body.installment_count ?? null) : null,
                 userId,
                 id
             ]
@@ -1127,6 +1221,28 @@ async function updateDocumentMetadata({ id, body, userId, role }) {
         if (dueDate && dueDate < body.document_date) {
             throw new AppError(400, 'วันครบกำหนดต้องไม่ก่อนวันที่เอกสาร', 'INVALID_DUE_DATE');
         }
+        const isReceipt = current.document_type === 'RC';
+        const withholdingEnabled = isReceipt && Boolean(body.receipt_withholding_enabled);
+        const withholdingAmount = withholdingEnabled ? Number(body.receipt_withholding_amount || 0) : 0;
+        const withholdingRate = withholdingEnabled ? Number(body.receipt_withholding_rate || 0) : 0;
+        const metadataPaymentMethod = isReceipt
+            ? (body.receipt_payment_method || current.receipt_payment_method || 'TRANSFER')
+            : current.receipt_payment_method;
+        const transferFee = isReceipt
+            ? (metadataPaymentMethod === 'TRANSFER' ? Number(body.receipt_transfer_fee || 0) : 0)
+            : Number(current.transfer_fee || 0);
+        const metadataPaymentType = isReceipt
+            ? (body.receipt_payment_type || current.receipt_payment_type || (current.installment_number ? 'INSTALLMENT' : 'FULL'))
+            : current.receipt_payment_type;
+        const metadataInstallmentNumber = isReceipt && body.receipt_payment_type
+            ? (body.installment_number ?? null)
+            : current.installment_number;
+        const metadataInstallmentCount = isReceipt && body.receipt_payment_type
+            ? (body.installment_count ?? null)
+            : current.installment_count;
+        if (withholdingAmount + transferFee > Number(current.grand_total)) {
+            throw new AppError(400, 'ยอดหัก ณ ที่จ่ายและค่าธรรมเนียมต้องไม่เกินยอดรวม', 'INVALID_PAYMENT_DEDUCTIONS');
+        }
 
         await client.query(
             `UPDATE documents SET
@@ -1136,17 +1252,36 @@ async function updateDocumentMetadata({ id, body, userId, role }) {
                 payment_terms = $4,
                 quotation_validity_days = $5,
                 show_signature = $6,
-                updated_by = $7
-             WHERE id = $8`,
+                withholding_is_actual = $7,
+                withholding_rate = $8,
+                withholding_base = CASE WHEN $7 THEN grand_total ELSE 0 END,
+                withholding_amount = $9,
+                transfer_fee = $10,
+                net_total = grand_total - $9 - $10,
+                payment_received_date = $11,
+                withholding_certificate_number = $12,
+                withholding_certificate_date = $13,
+                receipt_payment_type = $14,
+                receipt_payment_method = $15,
+                installment_number = $16,
+                installment_count = $17,
+                updated_by = $18
+             WHERE id = $19`,
             [
                 body.document_date,
                 dueDate,
                 body.remarks,
                 body.payment_terms,
                 body.quotation_validity_days ?? null,
-                Boolean(body.show_signature),
-                userId,
-                id
+                Boolean(body.show_signature), withholdingEnabled, withholdingRate, withholdingAmount, transferFee,
+                isReceipt ? (body.payment_received_date || body.document_date) : current.payment_received_date,
+                isReceipt ? body.withholding_certificate_number : current.withholding_certificate_number,
+                isReceipt ? body.withholding_certificate_date : current.withholding_certificate_date,
+                metadataPaymentType,
+                metadataPaymentMethod,
+                metadataInstallmentNumber,
+                metadataInstallmentCount,
+                userId, id
             ]
         );
         await syncSignatureSnapshot(
@@ -1232,7 +1367,7 @@ async function getDocumentById(id, { includeDeleted = false } = {}) {
     const document = documentResult.rows[0];
     if (!document) throw new AppError(404, 'ไม่พบเอกสาร', 'DOCUMENT_NOT_FOUND');
 
-    const [itemsResult, relationsResult, signaturesResult, settings] = await Promise.all([
+    const [itemsResult, relationsResult, signaturesResult, settings, paymentSummaryResult, receiptSourceItemsResult] = await Promise.all([
         pool.query(`SELECT * FROM document_items WHERE document_id = $1 ORDER BY sort_order`, [id]),
         pool.query(
             `SELECT r.*, s.document_number AS source_number, s.document_type AS source_type,
@@ -1247,7 +1382,60 @@ async function getDocumentById(id, { includeDeleted = false } = {}) {
             [id]
         ),
         pool.query(`SELECT * FROM document_signatures WHERE document_id = $1 ORDER BY id`, [id]),
-        getSettings()
+        getSettings(),
+        document.document_type === 'RC'
+            ? pool.query(
+                `SELECT src.id AS source_id, src.document_number AS source_number,
+                        src.subtotal AS source_subtotal, src.discount AS source_discount,
+                        src.grand_total AS source_total,
+                        COALESCE(SUM(other_rc.grand_total) FILTER (
+                            WHERE other_rc.id <> $1 AND other_rc.status = 'PAID' AND other_rc.deleted_at IS NULL
+                        ),0) AS paid_before,
+                        receipt.grand_total AS current_payment,
+                        GREATEST(src.grand_total
+                            - COALESCE(SUM(other_rc.grand_total) FILTER (
+                                WHERE other_rc.id <> $1 AND other_rc.status = 'PAID' AND other_rc.deleted_at IS NULL
+                              ),0)
+                            - receipt.grand_total, 0) AS remaining_after
+                 FROM documents receipt
+                 JOIN document_relations current_relation
+                   ON current_relation.target_document_id = receipt.id
+                  AND current_relation.relation_type = 'PAID_BY'
+                 JOIN documents src ON src.id = current_relation.source_document_id
+                 LEFT JOIN document_relations all_relations
+                   ON all_relations.source_document_id = src.id
+                  AND all_relations.relation_type = 'PAID_BY'
+                 LEFT JOIN documents other_rc ON other_rc.id = all_relations.target_document_id
+                 WHERE receipt.id = $1
+                 GROUP BY src.id, src.document_number, src.document_type, src.subtotal,
+                          src.discount, src.grand_total, receipt.grand_total
+                 ORDER BY CASE src.document_type
+                    WHEN 'IN' THEN 1 WHEN 'DO' THEN 2 WHEN 'QT' THEN 3 WHEN 'BN' THEN 4 ELSE 5 END,
+                    src.id
+                 LIMIT 1`,
+                [id]
+              )
+            : Promise.resolve({ rows: [] }),
+        document.document_type === 'RC'
+            ? pool.query(
+                `SELECT di.*
+                 FROM document_items di
+                 WHERE di.document_id = (
+                    SELECT r.source_document_id
+                    FROM document_relations r
+                    JOIN documents src ON src.id = r.source_document_id
+                    WHERE r.target_document_id = $1
+                      AND r.relation_type = 'PAID_BY'
+                      AND src.deleted_at IS NULL
+                    ORDER BY CASE src.document_type
+                      WHEN 'IN' THEN 1 WHEN 'DO' THEN 2 WHEN 'QT' THEN 3 WHEN 'BN' THEN 4 ELSE 5 END,
+                      src.id
+                    LIMIT 1
+                 )
+                 ORDER BY di.sort_order`,
+                [id]
+              )
+            : Promise.resolve({ rows: [] })
     ]);
 
     return {
@@ -1255,7 +1443,9 @@ async function getDocumentById(id, { includeDeleted = false } = {}) {
         items: itemsResult.rows,
         relations: relationsResult.rows,
         signatures: signaturesResult.rows,
-        settings
+        settings,
+        payment_summary: paymentSummaryResult.rows[0] || null,
+        receipt_source_items: receiptSourceItemsResult.rows
     };
 }
 
@@ -1339,8 +1529,21 @@ async function listAvailableSources({ target_type, customer_id, limit = 100 }) {
 
     const result = await pool.query(
         `SELECT d.id, d.document_number, d.document_type, d.status,
-                d.document_date, d.due_date, d.grand_total
+                d.document_date, d.due_date, d.grand_total,
+                COALESCE(receipts.paid_total, 0) AS paid_total,
+                GREATEST(d.grand_total - COALESCE(receipts.allocated_total, 0), 0) AS remaining_total
          FROM documents d
+         LEFT JOIN LATERAL (
+             SELECT
+                 COALESCE(SUM(rc.grand_total) FILTER (WHERE rc.status = 'PAID'), 0) AS paid_total,
+                 COALESCE(SUM(rc.grand_total) FILTER (WHERE rc.status <> 'CANCELLED'), 0) AS allocated_total
+             FROM document_relations r
+             JOIN documents rc ON rc.id = r.target_document_id
+             WHERE r.source_document_id = d.id
+               AND r.relation_type = 'PAID_BY'
+               AND rc.document_type = 'RC'
+               AND rc.deleted_at IS NULL
+         ) receipts ON TRUE
          WHERE d.customer_id = $1
            AND d.document_type = ANY($2::varchar[])
            AND d.status NOT IN ('CANCELLED', 'REJECTED')
@@ -1359,19 +1562,7 @@ async function listAvailableSources({ target_type, customer_id, limit = 100 }) {
                       AND bn.status <> 'CANCELLED'
                 )
            )
-           AND (
-                $3::varchar(2) <> 'RC'
-                OR NOT EXISTS (
-                    SELECT 1
-                    FROM document_relations r
-                    JOIN documents rc ON rc.id = r.target_document_id
-                    WHERE r.source_document_id = d.id
-                      AND r.relation_type = 'PAID_BY'
-                      AND rc.document_type = 'RC'
-                      AND rc.deleted_at IS NULL
-                      AND rc.status <> 'CANCELLED'
-                )
-           )
+           AND ($3::varchar(2) <> 'RC' OR d.grand_total > COALESCE(receipts.allocated_total, 0))
          ORDER BY d.document_date DESC, d.id DESC
          LIMIT $4`,
         [customer_id, types, target_type, parsedLimit + 1]
@@ -1399,46 +1590,48 @@ const allowedTransitions = {
 };
 
 async function onReceiptPaid(client, receiptId, userId) {
-    const relationsResult = await client.query(
-        `SELECT r.source_document_id, d.document_type
-         FROM document_relations r
-         JOIN documents d ON d.id = r.source_document_id
-         WHERE r.target_document_id = $1 AND r.relation_type = 'PAID_BY'`,
+    const sourceResult = await client.query(
+        `SELECT source_document_id
+         FROM document_relations
+         WHERE target_document_id = $1 AND relation_type = 'PAID_BY'`,
         [receiptId]
     );
-    
-    const billingStatementIdsToRefresh = new Set();
-    
-    for (const row of relationsResult.rows) {
-        const sourceId = Number(row.source_document_id);
-        const sourceType = row.document_type;
-        
-        if (['QT', 'IN', 'DO'].includes(sourceType)) {
-            await client.query(
-                `UPDATE documents
-                 SET status = 'PAID', updated_by = $1
-                 WHERE id = $2
-                   AND status <> 'CANCELLED'
-                   AND deleted_at IS NULL`,
-                [userId, sourceId]
-            );
-
-            if (sourceType === 'IN') {
-                const linkedBillingIds = await linkRelatedBillingStatementsToReceipt(client, sourceId, receiptId);
-                linkedBillingIds.forEach((id) => billingStatementIdsToRefresh.add(id));
-            }
-        }
-
-        if (sourceType === 'BN') {
-            await setBillingStatementPaid(client, sourceId, userId);
+    for (const row of sourceResult.rows) {
+        await client.query(
+            `WITH payment AS (
+                 SELECT COALESCE(SUM(rc.grand_total), 0) AS paid_total
+                 FROM document_relations r
+                 JOIN documents rc ON rc.id = r.target_document_id
+                 WHERE r.source_document_id = $1
+                   AND r.relation_type = 'PAID_BY'
+                   AND rc.document_type = 'RC'
+                   AND rc.status = 'PAID'
+                   AND rc.deleted_at IS NULL
+             )
+             UPDATE documents src
+             SET status = CASE
+                   WHEN payment.paid_total >= src.grand_total THEN 'PAID'
+                   WHEN payment.paid_total > 0 THEN 'PARTIALLY_PAID'
+                   WHEN src.due_date IS NOT NULL AND src.due_date < CURRENT_DATE THEN 'OVERDUE'
+                   ELSE 'PENDING'
+                 END,
+                 updated_by = $2,
+                 updated_at = NOW()
+             FROM payment
+             WHERE src.id = $1
+               AND src.deleted_at IS NULL
+               AND src.status <> 'CANCELLED'`,
+            [row.source_document_id, userId]
+        );
+        const billingResult = await client.query(
+            `SELECT target_document_id FROM document_relations
+             WHERE source_document_id = $1 AND relation_type = 'INCLUDED_IN'`,
+            [row.source_document_id]
+        );
+        if (billingResult.rows.length) {
+            await refreshBillingStatements(client, userId, billingResult.rows.map((item) => Number(item.target_document_id)));
         }
     }
-    
-    if (billingStatementIdsToRefresh.size) {
-        await refreshBillingStatements(client, userId, [...billingStatementIdsToRefresh]);
-    }
-    
-    await refreshBillingStatements(client, userId);
 }
 
 async function updateDocumentStatus({ id, status, userId }) {

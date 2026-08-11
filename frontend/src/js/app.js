@@ -39,6 +39,18 @@ const state = {
 const chartInstances = new Map();
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+const RECEIPT_PAYMENT_TYPE_LABELS = {
+  DEPOSIT: 'มัดจำ',
+  PARTIAL: 'ชำระบางส่วน',
+  INSTALLMENT: 'ชำระตามงวด',
+  FULL: 'ชำระครบทั้งหมด'
+};
+const RECEIPT_PAYMENT_METHOD_LABELS = {
+  CASH: 'เงินสด',
+  TRANSFER: 'โอนเข้าบัญชี',
+  CHECK: 'เช็ค',
+  OTHER: 'อื่น ๆ'
+};
 
 function hasPermission(permission) {
   if (!permission) return true;
@@ -380,6 +392,7 @@ async function switchView(name) {
     return;
   }
   state.currentView = name;
+  localStorage.setItem('tong_billing_current_view', name);
   $$('.view').forEach((el) => el.classList.toggle('active', el.id === `view-${name}`));
   $$('.nav-item').forEach((el) => el.classList.toggle('active', el.dataset.view === name));
   $('#page-title').textContent = viewMeta[name][0];
@@ -439,7 +452,9 @@ async function loadInitialData() {
   updateSignatureOptionAvailability();
   renderCustomerOptions();
   ensureProductDatalist();
-  await loadDashboard();
+  const savedView = localStorage.getItem('tong_billing_current_view');
+  const allowedViews = Object.keys(viewMeta);
+  await switchView(allowedViews.includes(savedView) ? savedView : 'dashboard');
 }
 
 function applyBrand() {
@@ -970,7 +985,8 @@ function bindDynamicDocumentButtons() {
     try {
       await request(`/documents/${button.dataset.statusId}/status`, { method:'PATCH', body:JSON.stringify({ status:button.dataset.status }) });
       showToast('อัปเดตสถานะแล้ว');
-      await Promise.all([loadDocuments(), loadDashboard()]);
+      await loadDocuments();
+      loadDashboard().catch(showGlobalError);
     } catch (error) { showGlobalError(error); }
   }));
 
@@ -987,7 +1003,8 @@ function bindDynamicDocumentButtons() {
     try {
       await request(`/documents/${select.dataset.statusSelect}/status`, { method:'PATCH', body:JSON.stringify({ status:nextStatus }) });
       showToast('อัปเดตสถานะแล้ว');
-      await Promise.all([loadDocuments(), loadDashboard()]);
+      await loadDocuments();
+      loadDashboard().catch(showGlobalError);
     } catch (error) {
       select.value = previousValue;
       select.disabled = false;
@@ -1201,7 +1218,144 @@ function updateReceiptPaymentVisibility({ applyDefaults = false } = {}) {
     $('#doc-payment-received-date').value = $('#doc-date').value || today();
     $('#doc-withholding-certificate-number').value = '';
     $('#doc-withholding-certificate-date').value = '';
+    $('#doc-receipt-payment-amount').value = '';
+    $('#doc-installment-number').value = '';
+    $('#doc-installment-count').value = '';
+    setReceiptPaymentType('FULL', { syncAmount: false });
+    setReceiptPaymentMethod('TRANSFER', { applyDefaultFee: false });
   }
+  updateReceiptWithholdingVisibility();
+  updateReceiptPaymentTypeVisibility();
+  updateReceiptPaymentMethodVisibility();
+}
+
+function selectedReceiptPaymentType() {
+  return $('input[name="doc-receipt-payment-type"]:checked')?.value || 'FULL';
+}
+
+function setReceiptPaymentType(value, { syncAmount = true } = {}) {
+  const input = $(`input[name="doc-receipt-payment-type"][value="${value}"]`)
+    || $('#doc-payment-type-full');
+  input.checked = true;
+  updateReceiptPaymentTypeVisibility({ syncAmount });
+}
+
+function selectedReceiptPaymentMethod() {
+  return $('input[name="doc-receipt-payment-method"]:checked')?.value || 'TRANSFER';
+}
+
+function setReceiptPaymentMethod(value, { applyDefaultFee = false } = {}) {
+  const input = $(`input[name="doc-receipt-payment-method"][value="${value}"]`)
+    || $('#doc-payment-method-transfer');
+  input.checked = true;
+  updateReceiptPaymentMethodVisibility({ applyDefaultFee });
+}
+
+function updateReceiptPaymentMethodVisibility({ applyDefaultFee = false } = {}) {
+  const isTransfer = selectedReceiptPaymentMethod() === 'TRANSFER';
+  $('#receipt-transfer-fee-field')?.classList.toggle('hidden', !isTransfer);
+  if (!isTransfer) {
+    $('#doc-receipt-transfer-fee').value = '0';
+  } else if (applyDefaultFee && Number($('#doc-receipt-transfer-fee').value || 0) === 0) {
+    $('#doc-receipt-transfer-fee').value = selectedCustomer()?.receipt_transfer_fee ?? 0;
+  }
+  updateReceiptBalanceFromSelection({ preserveAmount: true });
+  updateDocumentPreview();
+}
+
+function receiptSourceBalance() {
+  const selected = selectedSourceInputs()[0];
+  if (!selected) return null;
+  const total = Number(selected.dataset.total || 0);
+  const paid = Number(selected.dataset.paid || 0);
+  const remaining = Number(selected.dataset.remaining || total);
+  return { total, paid, remaining };
+}
+
+function updateReceiptWithholdingVisibility() {
+  const enabled = Boolean($('#doc-receipt-withholding-enabled')?.checked);
+  $('#receipt-withholding-fields')?.classList.toggle('hidden', !enabled);
+}
+
+function updateReceiptInstallmentWarning() {
+  const warning = $('#receipt-installment-warning');
+  if (!warning) return false;
+  const balance = receiptSourceBalance();
+  const installmentNumber = Number($('#doc-installment-number').value || 0);
+  const shouldWarn = selectedReceiptPaymentType() === 'INSTALLMENT'
+    && installmentNumber > 1
+    && balance
+    && balance.paid <= 0;
+  warning.classList.toggle('hidden', !shouldWarn);
+  $('span', warning).textContent = shouldWarn
+    ? 'ยังไม่พบการชำระงวดที่ 1 กรุณาบันทึกงวดที่ 1 ก่อน หรือเปลี่ยนเป็น “ชำระบางส่วน”'
+    : '';
+  return shouldWarn;
+}
+
+function updateReceiptPaymentTypeVisibility({ syncAmount = false } = {}) {
+  const paymentType = selectedReceiptPaymentType();
+  const isInstallment = paymentType === 'INSTALLMENT';
+  $('#receipt-installment-fields')?.classList.toggle('hidden', !isInstallment);
+  if (!isInstallment) {
+    $('#doc-installment-number').value = '';
+    $('#doc-installment-count').value = '';
+  }
+  const amountInput = $('#doc-receipt-payment-amount');
+  amountInput.readOnly = paymentType === 'FULL';
+  const balance = receiptSourceBalance();
+  if (paymentType === 'FULL' && balance && (syncAmount || !amountInput.value)) {
+    amountInput.value = balance.remaining.toFixed(2);
+  }
+  updateReceiptInstallmentWarning();
+  updateReceiptBalanceFromSelection({ preserveAmount: true });
+  updateDocumentPreview();
+}
+
+function updateReceiptBalanceFromSelection({ preserveAmount = false } = {}) {
+  const summary = $('#receipt-balance-summary');
+  const balance = receiptSourceBalance();
+  if ($('#doc-type').value !== 'RC' || !balance) {
+    summary?.classList.add('hidden');
+    $('#receipt-installment-warning')?.classList.add('hidden');
+    return;
+  }
+  const { total, paid, remaining } = balance;
+  if (!preserveAmount || !$('#doc-receipt-payment-amount').value) {
+    $('#doc-receipt-payment-amount').value = remaining.toFixed(2);
+  }
+  if (selectedReceiptPaymentType() === 'FULL') {
+    $('#doc-receipt-payment-amount').value = remaining.toFixed(2);
+  }
+  const current = Math.max(Number($('#doc-receipt-payment-amount').value || 0), 0);
+  const remainingAfter = Math.max(remaining - current, 0);
+  const withholdingEnabled = $('#doc-receipt-withholding-enabled').checked;
+  const enteredWithholding = $('#doc-receipt-withholding-amount').value;
+  const withholding = withholdingEnabled
+    ? (enteredWithholding === ''
+      ? current * (Number($('#doc-receipt-withholding-rate').value || 0) / 100)
+      : Math.max(Number(enteredWithholding || 0), 0))
+    : 0;
+  const transferFee = selectedReceiptPaymentMethod() === 'TRANSFER'
+    ? Math.max(Number($('#doc-receipt-transfer-fee').value || 0), 0)
+    : 0;
+  const netReceived = Math.max(current - withholding - transferFee, 0);
+  const paymentType = selectedReceiptPaymentType();
+  const installmentText = paymentType === 'INSTALLMENT' && $('#doc-installment-number').value && $('#doc-installment-count').value
+    ? ` · งวด ${$('#doc-installment-number').value}/${$('#doc-installment-count').value}`
+    : '';
+  $('#receipt-balance-summary-text').innerHTML = `
+    <div class="receipt-summary-row"><span>ยอดงานทั้งหมด</span><strong>${money(total)}</strong></div>
+    <div class="receipt-summary-row"><span>ชำระมาก่อนหน้านี้</span><strong>${money(paid)}</strong></div>
+    <div class="receipt-summary-row"><span>ประเภทการชำระ</span><strong>${escapeHtml(RECEIPT_PAYMENT_TYPE_LABELS[paymentType])}</strong></div>
+    <div class="receipt-summary-row current"><span>ยอดชำระครั้งนี้${escapeHtml(installmentText)}</span><strong>${money(current)}</strong></div>
+    <div class="receipt-summary-row"><span>ช่องทางรับชำระ</span><strong>${escapeHtml(RECEIPT_PAYMENT_METHOD_LABELS[selectedReceiptPaymentMethod()])}</strong></div>
+    ${withholdingEnabled ? `<div class="receipt-summary-row"><span>หัก ณ ที่จ่าย</span><strong>-${money(withholding)}</strong></div>` : ''}
+    ${transferFee > 0 ? `<div class="receipt-summary-row"><span>ค่าธรรมเนียมโอน</span><strong>-${money(transferFee)}</strong></div>` : ''}
+    ${withholding > 0 || transferFee > 0 ? `<div class="receipt-summary-row net"><span>ยอดรับสุทธิ</span><strong>${money(netReceived)}</strong></div>` : ''}
+    <div class="receipt-summary-row remaining"><span>ยอดคงเหลือหลังรับชำระ</span><strong>${money(remainingAfter)}</strong></div>`;
+  summary.classList.remove('hidden');
+  updateReceiptInstallmentWarning();
 }
 
 function updateAdaptiveDocumentFields() {
@@ -1212,17 +1366,17 @@ function updateAdaptiveDocumentFields() {
   $('#doc-due-date-field').classList.toggle('hidden', !['IN', 'BN'].includes(type));
   $('#doc-term-days-field').classList.toggle('hidden', !['QT', 'BN'].includes(type));
   $('#preview-total-label').textContent = type === 'RC'
-    ? 'จำนวนเงินที่ได้รับจริง'
+    ? 'ยอดรับสุทธิ'
     : type === 'BN'
       ? 'ยอดรวมใบวางบิล'
       : type === 'IN'
         ? 'ยอดรวมใบแจ้งหนี้'
         : 'ยอดรวมเอกสาร';
   $('#preview-summary-note').textContent = type === 'RC'
-    ? 'ยอดรับจริงหลังหัก ณ ที่จ่ายและค่าธรรมเนียม'
+    ? 'ยอดหลังหัก ณ ที่จ่ายและค่าธรรมเนียม (ถ้ามี)'
     : type === 'BN'
       ? 'ใบวางบิลแสดงยอดเต็ม ภาษีหัก ณ ที่จ่ายบันทึกตอนออกใบเสร็จ'
-      : 'ภาษีหัก ณ ที่จ่ายจะบันทึกเมื่อออกใบเสร็จรับเงินจริง';
+      : 'ภาษีหัก ณ ที่จ่ายจะบันทึกเมื่อออกใบเสร็จรับเงิน';
   updateReceiptPaymentVisibility();
   updateSourceDrivenItems();
 }
@@ -1312,6 +1466,11 @@ function resetDocumentFormForCreate() {
   $('#doc-due-date').value = '';
   $('#doc-remarks').value = '';
   $('#doc-payment-terms').value = '';
+  $('#doc-receipt-payment-amount').value = '';
+  $('#doc-installment-number').value = '';
+  $('#doc-installment-count').value = '';
+  setReceiptPaymentType('FULL', { syncAmount: false });
+  setReceiptPaymentMethod('TRANSFER', { applyDefaultFee: false });
   $('#doc-delivery-days').value = '';
   $('#doc-validity-days').value = '';
   $('#doc-term-days').value = '15';
@@ -1337,6 +1496,11 @@ function documentModalSnapshot() {
     validityDays: safe('#doc-validity-days'),
     showSignature: Boolean($('#doc-show-signature')?.checked),
     receipt: {
+      paymentType: selectedReceiptPaymentType(),
+      paymentMethod: selectedReceiptPaymentMethod(),
+      paymentAmount: safe('#doc-receipt-payment-amount'),
+      installmentNumber: safe('#doc-installment-number'),
+      installmentCount: safe('#doc-installment-count'),
       withholdingEnabled: Boolean($('#doc-receipt-withholding-enabled')?.checked),
       withholdingRate: safe('#doc-receipt-withholding-rate'),
       withholdingAmount: safe('#doc-receipt-withholding-amount'),
@@ -1431,6 +1595,11 @@ async function openDocumentModal(documentId = null, preferredType = null, prefer
     $('#doc-payment-received-date').value = toDateInputValue(doc.payment_received_date || doc.document_date);
     $('#doc-withholding-certificate-number').value = doc.withholding_certificate_number || '';
     $('#doc-withholding-certificate-date').value = toDateInputValue(doc.withholding_certificate_date);
+    $('#doc-receipt-payment-amount').value = doc.document_type === 'RC' ? (doc.grand_total ?? '') : '';
+    $('#doc-installment-number').value = doc.installment_number ?? '';
+    $('#doc-installment-count').value = doc.installment_count ?? '';
+    setReceiptPaymentType(doc.receipt_payment_type || (doc.installment_number ? 'INSTALLMENT' : 'FULL'), { syncAmount: false });
+    setReceiptPaymentMethod(doc.receipt_payment_method || 'TRANSFER', { applyDefaultFee: false });
     $('#doc-show-signature').checked = Boolean(doc.show_signature);
     updateSignatureOptionAvailability();
     doc.items.forEach((item) => addDocumentLine(item.line_type, item));
@@ -1443,6 +1612,9 @@ async function openDocumentModal(documentId = null, preferredType = null, prefer
       $$('#document-form input, #document-form select, #document-form textarea, #document-form button').forEach((element) => { element.disabled = true; });
       $('#doc-recalculate-due-field').classList.toggle('hidden', !doc.due_date);
       ['#doc-date','#doc-due-date','#doc-term-days','#doc-recalculate-due','#doc-remarks','#doc-payment-terms','#doc-validity-days','#doc-show-signature','#save-document','#wizard-back','#wizard-next'].forEach((selector) => { const element = $(selector); if (element) element.disabled = false; });
+      if (doc.document_type === 'RC') {
+        ['input[name="doc-receipt-payment-type"]','input[name="doc-receipt-payment-method"]','#doc-installment-number','#doc-installment-count','#doc-receipt-withholding-enabled','#doc-receipt-withholding-rate','#doc-receipt-withholding-amount','#doc-receipt-transfer-fee','#doc-payment-received-date','#doc-withholding-certificate-number','#doc-withholding-certificate-date'].forEach((selector) => { $$(selector).forEach((element) => { element.disabled = false; }); });
+      }
     }
     setWizardStep(2);
   } else {
@@ -1791,7 +1963,9 @@ function updateDocumentPreview() {
   if (sourceDrivenDocument() || $('#doc-type').value === 'BN') {
     product = 0;
     service = 0;
-    other = selectedSourceTotal();
+    other = $('#doc-type').value === 'RC'
+      ? (Number($('#doc-receipt-payment-amount').value) || 0)
+      : selectedSourceTotal();
   }
 
   const subtotal = product + service + other;
@@ -1801,7 +1975,9 @@ function updateDocumentPreview() {
 
   // ภาษีหัก ณ ที่จ่ายคำนวณเฉพาะใบเสร็จรับเงิน (RC)
   if ($('#doc-type').value === 'RC') {
-    transferFee = Number($('#doc-receipt-transfer-fee').value) || 0;
+    transferFee = selectedReceiptPaymentMethod() === 'TRANSFER'
+      ? Number($('#doc-receipt-transfer-fee').value) || 0
+      : 0;
     if ($('#doc-receipt-withholding-enabled').checked) {
       const enteredAmount = $('#doc-receipt-withholding-amount').value;
       withholding = enteredAmount === ''
@@ -1823,8 +1999,22 @@ $('#doc-show-signature').addEventListener('change', updateSignatureOptionAvailab
   '#doc-receipt-withholding-enabled',
   '#doc-receipt-withholding-rate',
   '#doc-receipt-withholding-amount',
-  '#doc-receipt-transfer-fee'
-].forEach((selector) => $(selector).addEventListener('input', updateDocumentPreview));
+  '#doc-receipt-transfer-fee',
+  '#doc-receipt-payment-amount'
+].forEach((selector) => $(selector).addEventListener('input', () => {
+  updateReceiptWithholdingVisibility();
+  updateReceiptBalanceFromSelection({ preserveAmount: true });
+  updateDocumentPreview();
+}));
+$$('input[name="doc-receipt-payment-type"]').forEach((input) => input.addEventListener('change', () => {
+  updateReceiptPaymentTypeVisibility({ syncAmount: true });
+}));
+$$('input[name="doc-receipt-payment-method"]').forEach((input) => input.addEventListener('change', () => {
+  updateReceiptPaymentMethodVisibility({ applyDefaultFee: true });
+}));
+['#doc-installment-number', '#doc-installment-count'].forEach((selector) => $(selector).addEventListener('input', () => {
+  updateReceiptBalanceFromSelection({ preserveAmount: true });
+}));
 $('#doc-date').addEventListener('change', () => {
   if ($('#doc-type').value === 'RC' && !$('#doc-payment-received-date').value) {
     $('#doc-payment-received-date').value = $('#doc-date').value;
@@ -1932,13 +2122,14 @@ async function loadSourceDocuments({ preferredSourceId = null } = {}) {
   const inputType = targetType === 'BN' ? 'checkbox' : 'radio';
   list.innerHTML = rows.map((documentRow) => `
     <label class="source-option source-document-card" for="source-document-${documentRow.id}">
-      <input id="source-document-${documentRow.id}" type="${inputType}" name="source-document" value="${documentRow.id}" data-total="${Number(documentRow.grand_total || 0)}">
+      <input id="source-document-${documentRow.id}" type="${inputType}" name="source-document" value="${documentRow.id}" data-total="${Number(documentRow.grand_total || 0)}" data-paid="${Number(documentRow.paid_total || 0)}" data-remaining="${Number(documentRow.remaining_total ?? documentRow.grand_total ?? 0)}">
       <span class="source-check"><i data-lucide="check"></i></span>
       <span class="source-document-copy"><strong>${escapeHtml(documentRow.document_number)}</strong><small>${DOC_LABELS[documentRow.document_type]} · ${dateThai(documentRow.document_date)}</small></span>
-      <strong class="source-amount">${money(documentRow.grand_total)}</strong>
+      <strong class="source-amount">${targetType === 'RC' ? `คงเหลือ ${money(documentRow.remaining_total ?? documentRow.grand_total)}` : money(documentRow.grand_total)}</strong>
     </label>`).join('');
   $$('input', list).forEach((input) => input.addEventListener('change', () => {
     updateSourceDrivenItems();
+    updateReceiptBalanceFromSelection();
     updateDocumentPreview();
   }));
   const preferredInput = preferredSourceId
@@ -1947,6 +2138,7 @@ async function loadSourceDocuments({ preferredSourceId = null } = {}) {
   if (preferredInput) preferredInput.checked = true;
   refreshIcons();
   updateSourceDrivenItems();
+  updateReceiptBalanceFromSelection();
   updateDocumentPreview();
   return Boolean(preferredInput);
 }
@@ -1989,7 +2181,17 @@ function validateWizardStep(step) {
     if (sourceCount === 0 && items.length === 0) return 'กรุณาเพิ่มรายการสินค้า/บริการ หรือเลือกเอกสารต้นทาง';
     const emptyItem = items.find((item) => item.line_type === 'item' && (!item.description || Number(item.quantity) <= 0));
     if (emptyItem) return 'กรุณาตรวจรายละเอียดและจำนวนของรายการสินค้า/บริการ';
-    if (type === 'RC' && !$('#doc-payment-received-date').value) return 'กรุณาระบุวันที่รับเงินจริง';
+    if (type === 'RC' && !$('#doc-payment-received-date').value) return 'กรุณาระบุวันที่รับชำระ';
+    if (type === 'RC' && sourceCount > 0 && Number($('#doc-receipt-payment-amount').value) <= 0) return 'กรุณาระบุยอดรับชำระครั้งนี้';
+    if (type === 'RC' && sourceCount > 0) {
+      const balance = receiptSourceBalance();
+      if (balance && Number($('#doc-receipt-payment-amount').value) > balance.remaining + 0.005) return 'ยอดที่ชำระครั้งนี้ต้องไม่เกินยอดคงเหลือ';
+      if (selectedReceiptPaymentType() === 'INSTALLMENT') {
+        if (!$('#doc-installment-number').value || !$('#doc-installment-count').value) return 'กรุณาระบุงวดปัจจุบันและจำนวนงวดทั้งหมด';
+        if (Number($('#doc-installment-number').value) > Number($('#doc-installment-count').value)) return 'งวดปัจจุบันต้องไม่มากกว่าจำนวนงวดทั้งหมด';
+        if (updateReceiptInstallmentWarning()) return 'ยังไม่พบการชำระงวดที่ 1 กรุณาบันทึกงวดที่ 1 ก่อน หรือเปลี่ยนเป็นชำระบางส่วน';
+      }
+    }
   }
   return '';
 }
@@ -2009,7 +2211,11 @@ function renderDocumentReview() {
   const sourceNames = sources.map((input) => $('.source-document-copy strong', input.closest('label'))?.textContent || input.value);
   const receiptDetails = type === 'RC' ? `
     <section class="review-card"><h4><i data-lucide="badge-dollar-sign"></i> ข้อมูลรับชำระ</h4>
-      ${reviewRow('วันที่รับเงินจริง', dateThai($('#doc-payment-received-date').value))}
+      ${reviewRow('วันที่รับชำระ', dateThai($('#doc-payment-received-date').value))}
+      ${reviewRow('ประเภทการชำระ', RECEIPT_PAYMENT_TYPE_LABELS[selectedReceiptPaymentType()])}
+      ${reviewRow('ช่องทางรับชำระ', RECEIPT_PAYMENT_METHOD_LABELS[selectedReceiptPaymentMethod()])}
+      ${reviewRow('ยอดที่ลูกค้าชำระครั้งนี้', money($('#doc-receipt-payment-amount').value || 0))}
+      ${selectedReceiptPaymentType() === 'INSTALLMENT' ? reviewRow('งวด', `${$('#doc-installment-number').value}/${$('#doc-installment-count').value}`) : ''}
       ${reviewRow('หัก ณ ที่จ่าย', $('#doc-receipt-withholding-enabled').checked ? `${$('#doc-receipt-withholding-rate').value || 0}%` : 'ไม่หัก')}
       ${reviewRow('ค่าธรรมเนียมโอน', money($('#doc-receipt-transfer-fee').value || 0))}
     </section>` : '';
@@ -2083,6 +2289,11 @@ $('#document-form').addEventListener('submit', async (event) => {
         ? $('#doc-receipt-withholding-amount').value
         : undefined,
       receipt_transfer_fee: $('#doc-type').value === 'RC' ? ($('#doc-receipt-transfer-fee').value || 0) : 0,
+      receipt_payment_amount: $('#doc-type').value === 'RC' ? ($('#doc-receipt-payment-amount').value || undefined) : undefined,
+      receipt_payment_type: $('#doc-type').value === 'RC' ? selectedReceiptPaymentType() : undefined,
+      receipt_payment_method: $('#doc-type').value === 'RC' ? selectedReceiptPaymentMethod() : undefined,
+      installment_number: $('#doc-type').value === 'RC' && selectedReceiptPaymentType() === 'INSTALLMENT' && $('#doc-installment-number').value ? Number($('#doc-installment-number').value) : null,
+      installment_count: $('#doc-type').value === 'RC' && selectedReceiptPaymentType() === 'INSTALLMENT' && $('#doc-installment-count').value ? Number($('#doc-installment-count').value) : null,
       payment_received_date: $('#doc-type').value === 'RC' ? ($('#doc-payment-received-date').value || $('#doc-date').value) : null,
       withholding_certificate_number: $('#doc-type').value === 'RC' ? $('#doc-withholding-certificate-number').value : null,
       withholding_certificate_date: $('#doc-type').value === 'RC' ? ($('#doc-withholding-certificate-date').value || null) : null,
@@ -2101,7 +2312,18 @@ $('#document-form').addEventListener('submit', async (event) => {
           payment_terms: payload.payment_terms,
           quotation_validity_days: payload.quotation_validity_days,
           show_signature: payload.show_signature,
-          recalculate_due_date: $('#doc-recalculate-due').checked
+          recalculate_due_date: $('#doc-recalculate-due').checked,
+          receipt_withholding_enabled: payload.receipt_withholding_enabled,
+          receipt_withholding_rate: payload.receipt_withholding_rate,
+          receipt_withholding_amount: payload.receipt_withholding_amount,
+          receipt_transfer_fee: payload.receipt_transfer_fee,
+          receipt_payment_type: payload.receipt_payment_type,
+          receipt_payment_method: payload.receipt_payment_method,
+          installment_number: payload.installment_number,
+          installment_count: payload.installment_count,
+          payment_received_date: payload.payment_received_date,
+          withholding_certificate_number: payload.withholding_certificate_number,
+          withholding_certificate_date: payload.withholding_certificate_date
         }) })
       : await request(editingId ? `/documents/${editingId}` : '/documents', {
           method: editingId ? 'PUT' : 'POST',

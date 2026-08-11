@@ -84,7 +84,7 @@ const TABLE_ALLOWED_COLUMNS = {
         'withholding_base', 'withholding_amount', 'transfer_fee', 'net_total', 'remarks', 'payment_terms', 'delivery_days',
         'quotation_validity_days', 'created_by', 'updated_by', 'created_at', 'updated_at', 'cancelled_at', 'cancelled_by',
         'cancellation_reason', 'deleted_at', 'deleted_by', 'deletion_reason', 'withholding_is_actual', 'payment_received_date',
-        'withholding_certificate_number', 'withholding_certificate_date', 'show_signature'
+        'withholding_certificate_number', 'withholding_certificate_date', 'installment_number', 'installment_count', 'show_signature'
     ]),
     document_items: new Set([
         'id', 'document_id', 'sort_order', 'line_type', 'item_type', 'product_id', 'description', 'quantity', 'unit',

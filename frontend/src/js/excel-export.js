@@ -127,20 +127,20 @@ export async function resolveExcelImage(source) {
   }
 }
 
-function documentSummaryLabel(type) {
-  if (type === 'RC') return 'จำนวนเงินที่ได้รับจริง';
-  if (type === 'BN') return 'ยอดรวมใบวางบิล';
-  if (type === 'IN') return 'ยอดรวมใบแจ้งหนี้';
+function documentSummaryLabel(doc) {
+  if (doc.document_type === 'RC') return numeric(doc.withholding_amount) > 0 || numeric(doc.transfer_fee) > 0 ? 'ยอดรับสุทธิ' : 'จำนวนเงินที่รับ';
+  if (doc.document_type === 'BN') return 'ยอดรวมใบวางบิล';
+  if (doc.document_type === 'IN') return 'ยอดรวมใบแจ้งหนี้';
   return 'รวมสุทธิ';
 }
 
 function signatureLayout(type) {
   if (type === 'BN') return [
-    { range:'A:C', title:'ผู้รับใบวางบิล / Recipient', detail:'ลงชื่อ ........................................\nวันที่ ........................................' },
+    { range:'A:C', title:'ผู้รับใบวางบิล / Recipient', detail:'ลงชื่อ ........................................' },
     { range:'D:F', title:'ผู้ออกใบวางบิล', issuer:true }
   ];
   if (type === 'DO') return [
-    { range:'A:C', title:'ผู้รับของ / Receiver', detail:'ได้รับสินค้าตามรายการถูกต้องแล้ว\nลงชื่อ ........................................\nวันที่ ........................................' },
+    { range:'A:C', title:'ผู้รับของ / Receiver', detail:'ได้รับสินค้าตามรายการถูกต้องแล้ว\nลงชื่อ ........................................' },
     { range:'D:F', title:'ผู้ส่งของ / Delivered By', issuer:true }
   ];
   const title = type === 'QT' ? 'ผู้เสนอราคา' : type === 'RC' ? 'ผู้รับเงิน' : 'ผู้จัดทำเอกสาร';
@@ -198,6 +198,13 @@ export async function buildExcelWorkbook(doc, options = {}) {
 
   const settings = doc.settings || {};
   const customer = doc.customer_snapshot || {};
+  const shopName = [settings.shop_name_th, settings.shop_name_en].filter(Boolean).join(' ');
+  const contactNumber = String(settings.shop_phone || '0864733795').replace(/\D/g, '') || '0864733795';
+  const usesSourceDetails = doc.document_type === 'RC' && doc.payment_summary && doc.receipt_source_items?.length;
+  const displayItems = usesSourceDetails ? doc.receipt_source_items : (doc.items || []);
+  const displaySubtotal = usesSourceDetails ? numeric(doc.payment_summary.source_subtotal) : numeric(doc.subtotal);
+  const displayDiscount = usesSourceDetails ? numeric(doc.payment_summary.source_discount) : numeric(doc.discount);
+  const displayGrandTotal = usesSourceDetails ? numeric(doc.payment_summary.source_total) : numeric(doc.net_total);
   const imageResolver = options.imageResolver || resolveExcelImage;
   const [logo, signature] = await Promise.all([
     imageResolver(settings.logo_url),
@@ -216,11 +223,11 @@ export async function buildExcelWorkbook(doc, options = {}) {
   borderRange(sheet, 'A1:A5', theme.border);
   addImageToSheet(workbook, sheet, logo, 'A2:A4');
 
-  mergeAndSet(sheet, 'B1:D1', settings.shop_name_th || 'ชื่อร้าน', { size:19, bold:true, color:theme.strong, fill:theme.soft });
-  mergeAndSet(sheet, 'B2:D2', settings.shop_name_en || '', { size:14, bold:true, color:theme.strong, fill:theme.soft });
+  mergeAndSet(sheet, 'B1:D1', shopName || 'ชื่อร้าน', { size:19, bold:true, color:theme.strong, fill:theme.soft });
+  mergeAndSet(sheet, 'B2:D2', '', { size:14, bold:true, color:theme.strong, fill:theme.soft });
   mergeAndSet(sheet, 'B3:D3', settings.shop_address || '', { size:14, fill:theme.soft });
   mergeAndSet(sheet, 'B4:D4', `เลขประจำตัวผู้เสียภาษี ${String(settings.shop_tax_id || '-')}`, { size:14, fill:theme.soft, numberFormat:'@' });
-  mergeAndSet(sheet, 'B5:D5', `โทร ${settings.shop_phone || '-'}   •   อีเมล ${settings.shop_email || '-'}`, { size:13, fill:theme.soft });
+  mergeAndSet(sheet, 'B5:D5', `โทร/ไอดีไลน์ ${contactNumber}`, { size:13, fill:theme.soft });
   borderRange(sheet, 'B1:D5', theme.border);
 
   mergeAndSet(sheet, 'E1:F2', DOC_LABELS[doc.document_type] || doc.document_type, { size:20, bold:true, align:'center', color:'FFFFFF', fill:theme.strong });
@@ -258,12 +265,12 @@ export async function buildExcelWorkbook(doc, options = {}) {
   borderRange(sheet, `A${tableHeaderRow}:F${tableHeaderRow}`, theme.border);
 
   const firstItemRow = tableHeaderRow + 1;
-  const itemRows = Math.max(doc.items?.length || 0, MIN_ITEM_ROWS);
+  const itemRows = Math.max(displayItems.length, MIN_ITEM_ROWS);
   let itemSequence = 0;
   for (let index = 0; index < itemRows; index += 1) {
     const rowNumber = firstItemRow + index;
     const row = sheet.getRow(rowNumber);
-    const item = doc.items?.[index];
+    const item = displayItems[index];
     row.height = 22;
 
     if (item?.line_type === 'section' || item?.line_type === 'note') {
@@ -290,61 +297,89 @@ export async function buildExcelWorkbook(doc, options = {}) {
   }
 
   const lastItemRow = firstItemRow + itemRows - 1;
+  const isRC = doc.document_type === 'RC';
   let summaryRow = lastItemRow + 1;
   const subtotalRow = summaryRow;
-  mergeAndSet(sheet, `A${summaryRow}:D${summaryRow}`, '', { fill:theme.soft2 });
-  setValue(sheet.getCell(summaryRow, 5), 'รวมเป็นเงิน', { bold:true, align:'right', fill:theme.soft2, color:theme.strong });
-  formulaCell(sheet.getCell(summaryRow, 6), `SUM(F${firstItemRow}:F${lastItemRow})`, numeric(doc.subtotal), { bold:true, fill:theme.soft2, numberFormat:CURRENCY_FORMAT });
-  borderRange(sheet, `A${summaryRow}:F${summaryRow}`, theme.border);
 
-  summaryRow += 1;
-  const discountRow = summaryRow;
-  mergeAndSet(sheet, `A${summaryRow}:D${summaryRow}`, '', { fill:theme.soft2 });
-  setValue(sheet.getCell(summaryRow, 5), 'ส่วนลด', { align:'right', fill:theme.soft2 });
-  setValue(sheet.getCell(summaryRow, 6), numeric(doc.discount), { align:'right', fill:theme.soft2, numberFormat:CURRENCY_FORMAT });
-  borderRange(sheet, `A${summaryRow}:F${summaryRow}`, theme.border);
+  // Build right-side summary rows
+  setValue(sheet.getCell(summaryRow, 5), 'รวมเป็นเงิน', { bold:true, align:'right', fill:theme.soft2, color:theme.strong });
+  formulaCell(sheet.getCell(summaryRow, 6), `SUM(F${firstItemRow}:F${lastItemRow})`, displaySubtotal, { bold:true, fill:theme.soft2, numberFormat:CURRENCY_FORMAT });
+
+  let discountRow = null;
+  if (displayDiscount > 0) {
+    summaryRow += 1;
+    discountRow = summaryRow;
+    setValue(sheet.getCell(summaryRow, 5), 'ส่วนลด', { align:'right', fill:theme.soft2 });
+    setValue(sheet.getCell(summaryRow, 6), displayDiscount, { align:'right', fill:theme.soft2, numberFormat:CURRENCY_FORMAT });
+  }
+
+  let paidBeforeRow = null;
+  if (usesSourceDetails && numeric(doc.payment_summary?.paid_before) > 0) {
+    summaryRow += 1;
+    paidBeforeRow = summaryRow;
+    setValue(sheet.getCell(summaryRow, 5), 'ชำระก่อนหน้านี้', { align:'right', fill:theme.soft2 });
+    setValue(sheet.getCell(summaryRow, 6), numeric(doc.payment_summary.paid_before), { align:'right', fill:theme.soft2, numberFormat:CURRENCY_FORMAT });
+  }
 
   let withholdingRow = null;
-  let transferFeeRow = null;
-  if (doc.document_type === 'RC') {
+  if (numeric(doc.withholding_amount) > 0) {
     summaryRow += 1;
     withholdingRow = summaryRow;
-    mergeAndSet(sheet, `A${summaryRow}:D${summaryRow}`, '', { fill:theme.soft2 });
-    setValue(sheet.getCell(summaryRow, 5), `หัก ณ ที่จ่ายจริง ${numeric(doc.withholding_rate)}%`, { align:'right', fill:theme.soft2 });
+    setValue(sheet.getCell(summaryRow, 5), `หัก ณ ที่จ่าย ${numeric(doc.withholding_rate)}%`, { align:'right', fill:theme.soft2 });
     setValue(sheet.getCell(summaryRow, 6), numeric(doc.withholding_amount), { align:'right', fill:theme.soft2, numberFormat:CURRENCY_FORMAT });
-    borderRange(sheet, `A${summaryRow}:F${summaryRow}`, theme.border);
+  }
 
+  let transferFeeRow = null;
+  if (numeric(doc.transfer_fee) > 0) {
     summaryRow += 1;
     transferFeeRow = summaryRow;
-    mergeAndSet(sheet, `A${summaryRow}:D${summaryRow}`, '', { fill:theme.soft2 });
     setValue(sheet.getCell(summaryRow, 5), 'ค่าธรรมเนียมโอน', { align:'right', fill:theme.soft2 });
     setValue(sheet.getCell(summaryRow, 6), numeric(doc.transfer_fee), { align:'right', fill:theme.soft2, numberFormat:CURRENCY_FORMAT });
-    borderRange(sheet, `A${summaryRow}:F${summaryRow}`, theme.border);
   }
 
   summaryRow += 1;
   const netRow = summaryRow;
-  const deductions = [`F${discountRow}`];
-  if (withholdingRow) deductions.push(`F${withholdingRow}`);
-  if (transferFeeRow) deductions.push(`F${transferFeeRow}`);
-  mergeAndSet(sheet, `A${summaryRow}:D${summaryRow}`, '', { fill:theme.soft });
-  setValue(sheet.getCell(summaryRow, 5), documentSummaryLabel(doc.document_type), { bold:true, align:'right', fill:theme.strong, color:'FFFFFF', size:15 });
-  formulaCell(sheet.getCell(summaryRow, 6), `F${subtotalRow}-${deductions.join('-')}`, numeric(doc.net_total), { bold:true, fill:theme.strong, color:'FFFFFF', size:15, numberFormat:CURRENCY_FORMAT });
-  borderRange(sheet, `A${summaryRow}:F${summaryRow}`, theme.border, 'medium');
+  setValue(sheet.getCell(summaryRow, 5), usesSourceDetails ? 'รับชำระครั้งนี้' : documentSummaryLabel(doc), { bold:true, align:'right', fill:theme.strong, color:'FFFFFF', size:14 });
+  setValue(sheet.getCell(summaryRow, 6), isRC ? numeric(doc.grand_total) : displayGrandTotal, { bold:true, fill:theme.strong, color:'FFFFFF', size:14, numberFormat:CURRENCY_FORMAT });
 
-  summaryRow += 1;
-  const bahtTextRow = summaryRow;
-  const bahtTextCell = mergeAndSet(sheet, `A${summaryRow}:F${summaryRow}`, '', { bold:true, align:'center', fill:theme.soft, color:theme.strong });
-  bahtTextCell.value = { formula:`BAHTTEXT(F${netRow})`, result:thaiBahtText(doc.net_total) };
-  borderRange(sheet, `A${summaryRow}:F${summaryRow}`, theme.border);
+  let remainingRow = null;
+  if (usesSourceDetails) {
+    summaryRow += 1;
+    remainingRow = summaryRow;
+    setValue(sheet.getCell(summaryRow, 5), 'ยอดคงเหลือ', { bold:true, align:'right', fill:theme.soft2, color:theme.strong });
+    setValue(sheet.getCell(summaryRow, 6), numeric(doc.payment_summary.remaining_after), { bold:true, align:'right', fill:theme.soft2, numberFormat:CURRENCY_FORMAT });
+  }
 
-  sheet.getRow(bahtTextRow + 1).height = 7;
-  let contentRow = bahtTextRow + 2;
+  const summaryEndRow = summaryRow;
+
+  // Build left-side content merged across A{subtotalRow}:D{summaryEndRow}
+  const paymentTypeLabels = { DEPOSIT:'มัดจำ', PARTIAL:'ชำระบางส่วน', INSTALLMENT:'ชำระตามงวด', FULL:'ชำระครบทั้งหมด' };
+  const paymentMethodLabels = { CASH:'เงินสด', TRANSFER:'โอนเข้าบัญชี', CHECK:'เช็ค', OTHER:'อื่น ๆ' };
+  const paymentType = doc.receipt_payment_type || (doc.installment_number ? 'INSTALLMENT' : 'FULL');
+  const paymentMethod = doc.receipt_payment_method || 'TRANSFER';
+
+  let leftText = `(${thaiBahtText(doc.net_total)})`;
+  if (isRC) {
+    const details = [];
+    if (doc.payment_summary?.source_number) details.push(`อ้างอิง: ${doc.payment_summary.source_number}`);
+    details.push(`ช่องทาง: ${paymentMethodLabels[paymentMethod] || 'โอนเข้าบัญชี'} (${paymentTypeLabels[paymentType] || 'รับชำระ'})`);
+    details.push(`วันที่รับชำระ: ${dateThai(doc.payment_received_date || doc.document_date)}`);
+    if (doc.installment_number && doc.installment_count) details.push(`งวดที่: ${numeric(doc.installment_number)}/${numeric(doc.installment_count)}`);
+    if (doc.withholding_certificate_number) details.push(`หนังสือหัก ณ ที่จ่าย: ${doc.withholding_certificate_number}`);
+    leftText += `\n` + details.join('\n');
+  }
+
+  mergeAndSet(sheet, `A${subtotalRow}:D${summaryEndRow}`, leftText, { bold:isRC, align:'left', fill:theme.soft2, color:theme.strong, size:13 });
+  borderRange(sheet, `A${subtotalRow}:F${summaryEndRow}`, theme.border);
+
+  sheet.getRow(summaryEndRow + 1).height = 7;
+  let contentRow = summaryEndRow + 2;
+
   const terms = [];
   if (doc.remarks) terms.push(`หมายเหตุ: ${doc.remarks}`);
   if (doc.payment_terms) terms.push(`เงื่อนไขการชำระ: ${doc.payment_terms}`);
   if (doc.delivery_days != null) terms.push(`กำหนดส่งงานภายใน ${doc.delivery_days} วัน`);
-  if (doc.quotation_validity_days != null) terms.push(`ราคานี้ยืนได้ ${doc.quotation_validity_days} วัน`);
+  if (doc.document_type === 'QT' && doc.quotation_validity_days != null) terms.push(`ราคานี้ยืนได้ ${doc.quotation_validity_days} วัน`);
   if (terms.length) {
     mergeAndSet(sheet, `A${contentRow}:F${contentRow}`, `หมายเหตุ / เงื่อนไข\n${terms.join('\n')}`, { fill:theme.soft2, color:theme.strong });
     sheet.getRow(contentRow).height = Math.max(38, 18 + terms.length * 15);
@@ -368,23 +403,12 @@ export async function buildExcelWorkbook(doc, options = {}) {
     }
   }
 
-  if (doc.document_type === 'RC') {
-    const receiptDetails = [`วันที่รับเงินจริง: ${dateThai(doc.payment_received_date || doc.document_date)}`];
-    if (doc.withholding_certificate_number) receiptDetails.push(`เลขที่หนังสือรับรองหัก ณ ที่จ่าย: ${doc.withholding_certificate_number}`);
-    if (doc.withholding_certificate_date) receiptDetails.push(`วันที่หนังสือรับรอง: ${dateThai(doc.withholding_certificate_date)}`);
-    mergeAndSet(sheet, `A${contentRow}:F${contentRow}`, `ข้อมูลการรับชำระ\n${receiptDetails.join('\n')}`, { fill:theme.soft2, color:theme.strong });
-    sheet.getRow(contentRow).height = Math.max(38, 18 + receiptDetails.length * 15);
-    borderRange(sheet, `A${contentRow}:F${contentRow}`, theme.border);
-    sheet.getRow(contentRow + 1).height = 7;
-    contentRow += 2;
-  }
-
   const signatureStart = contentRow;
   const signatureEnd = contentRow + 3;
   signatureLayout(doc.document_type).forEach((box) => {
     const [startColumn, endColumn] = box.range.split(':');
     mergeAndSet(sheet, `${startColumn}${signatureStart}:${endColumn}${signatureStart}`, box.title, { bold:true, align:'center', color:theme.strong, fill:theme.soft2 });
-    const detail = box.detail || `ลงชื่อ ........................................\n${settings.shop_owner || doc.created_by_name || ''}\nวันที่ ${dateThai(doc.document_date)}`;
+    const detail = box.detail || `ลงชื่อ ........................................\n${settings.shop_owner || doc.created_by_name || ''}`;
     mergeAndSet(sheet, `${startColumn}${signatureStart + 1}:${endColumn}${signatureEnd}`, detail, { align:'center', fill:'FFFFFF' });
     borderRange(sheet, `${startColumn}${signatureStart}:${endColumn}${signatureEnd}`, theme.border);
     if (box.issuer && signature) {
