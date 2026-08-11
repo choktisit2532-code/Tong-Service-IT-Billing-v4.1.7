@@ -45,6 +45,19 @@ excelButton.addEventListener('click', async () => {
   }
 });
 
+function receiptAmountLabel(doc) {
+  if (doc.installment_number) {
+    return doc.installment_count
+      ? `ยอดชำระงวดที่ ${doc.installment_number}/${doc.installment_count}`
+      : `ยอดชำระงวดที่ ${doc.installment_number}`;
+  }
+  const paymentType = doc.receipt_payment_type;
+  if (paymentType === 'DEPOSIT') return 'ยอดรับมัดจำ';
+  if (paymentType === 'PARTIAL') return 'ยอดชำระบางส่วน';
+  if (paymentType === 'INSTALLMENT') return 'ยอดชำระตามงวด';
+  return 'รับชำระครั้งนี้';
+}
+
 function summaryRows(doc) {
   const isRC = doc.document_type === 'RC';
   const usesSourceDetails = isRC && doc.payment_summary && doc.receipt_source_items?.length;
@@ -58,7 +71,7 @@ function summaryRows(doc) {
     if (Number(doc.payment_summary.paid_before) > 0) {
       rows.push(['ชำระก่อนหน้านี้', doc.payment_summary.paid_before]);
     }
-    rows.push(['รับชำระครั้งนี้', doc.grand_total]);
+    rows.push([receiptAmountLabel(doc), doc.grand_total]);
     if (Number(doc.withholding_amount) > 0) {
       rows.push([`หัก ณ ที่จ่าย ${Number(doc.withholding_rate)}%`, `-${number(doc.withholding_amount)}`]);
     }
@@ -80,7 +93,7 @@ function summaryRows(doc) {
   if (!usesSourceDetails) {
     rows.push([
       isRC
-        ? (Number(doc.withholding_amount) > 0 || Number(doc.transfer_fee) > 0 ? 'ยอดรับสุทธิ' : 'จำนวนเงินที่รับ')
+        ? (Number(doc.withholding_amount) > 0 || Number(doc.transfer_fee) > 0 ? 'ยอดรับสุทธิ' : receiptAmountLabel(doc))
         : doc.document_type === 'BN' ? 'ยอดรวมใบวางบิล'
           : doc.document_type === 'IN' ? 'ยอดรวมใบแจ้งหนี้' : 'รวมสุทธิ',
       doc.net_total

@@ -127,8 +127,21 @@ export async function resolveExcelImage(source) {
   }
 }
 
+function receiptAmountLabel(doc) {
+  if (doc.installment_number) {
+    return doc.installment_count
+      ? `ยอดชำระงวดที่ ${doc.installment_number}/${doc.installment_count}`
+      : `ยอดชำระงวดที่ ${doc.installment_number}`;
+  }
+  const paymentType = doc.receipt_payment_type;
+  if (paymentType === 'DEPOSIT') return 'ยอดรับมัดจำ';
+  if (paymentType === 'PARTIAL') return 'ยอดชำระบางส่วน';
+  if (paymentType === 'INSTALLMENT') return 'ยอดชำระตามงวด';
+  return 'รับชำระครั้งนี้';
+}
+
 function documentSummaryLabel(doc) {
-  if (doc.document_type === 'RC') return numeric(doc.withholding_amount) > 0 || numeric(doc.transfer_fee) > 0 ? 'ยอดรับสุทธิ' : 'จำนวนเงินที่รับ';
+  if (doc.document_type === 'RC') return numeric(doc.withholding_amount) > 0 || numeric(doc.transfer_fee) > 0 ? 'ยอดรับสุทธิ' : receiptAmountLabel(doc);
   if (doc.document_type === 'BN') return 'ยอดรวมใบวางบิล';
   if (doc.document_type === 'IN') return 'ยอดรวมใบแจ้งหนี้';
   return 'รวมสุทธิ';
@@ -339,7 +352,7 @@ export async function buildExcelWorkbook(doc, options = {}) {
 
   summaryRow += 1;
   const netRow = summaryRow;
-  setValue(sheet.getCell(summaryRow, 5), usesSourceDetails ? 'รับชำระครั้งนี้' : documentSummaryLabel(doc), { bold:true, align:'right', fill:theme.strong, color:'FFFFFF', size:14 });
+  setValue(sheet.getCell(summaryRow, 5), usesSourceDetails ? receiptAmountLabel(doc) : documentSummaryLabel(doc), { bold:true, align:'right', fill:theme.strong, color:'FFFFFF', size:14 });
   setValue(sheet.getCell(summaryRow, 6), isRC ? numeric(doc.grand_total) : displayGrandTotal, { bold:true, fill:theme.strong, color:'FFFFFF', size:14, numberFormat:CURRENCY_FORMAT });
 
   let remainingRow = null;
