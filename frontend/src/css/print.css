@@ -80,14 +80,14 @@ body {
 .doc-title strong { display: block; font-size: 14px; }
 .doc-title span { color: #374151; }
 .customer-grid { display: grid; grid-template-columns: 1.35fr .65fr; gap: 8px; margin-top: 8px; }
-.box { border: 1px solid var(--doc-border); padding: 7px; min-height: 70px; background: var(--doc-soft-2); }
-.box p { margin: 3px 0; }
+.box { border: 1px solid var(--doc-border); padding: 5px 7px; min-height: 58px; background: var(--doc-soft-2); }
+.box p { margin: 2px 0; }
 .box strong { color: var(--doc-strong); }
 .doc-table {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  margin-top: 8px;
+  margin-top: 6px;
 }
 .doc-table .col-index { width: 38px; }
 .doc-table .col-description { width: auto; }
@@ -98,7 +98,7 @@ body {
 .doc-table th,
 .doc-table td {
   border: 1px solid var(--doc-border);
-  padding: 5px 6px;
+  padding: 4px 6px;
   vertical-align: top;
   box-sizing: border-box;
 }
@@ -127,7 +127,7 @@ body {
   vertical-align: middle;
   font-weight: 600;
   background: var(--doc-soft-2);
-  padding: 6px 8px;
+  padding: 5px 8px;
 }
 .baht-text-cell-rc {
   text-align: left;
@@ -174,12 +174,12 @@ body {
   background: var(--doc-soft);
   color: var(--doc-strong);
 }
-.terms { border: 1px solid var(--doc-border); margin-top: 8px; padding: 7px; min-height: 45px; background: var(--doc-soft-2); }
+.terms { border: 1px solid var(--doc-border); margin-top: 6px; padding: 5px 7px; min-height: 40px; background: var(--doc-soft-2); }
 .terms > strong, .payment-box > strong { color: var(--doc-strong); }
-.payment-box { border: 1px solid var(--doc-border); margin-top: 8px; padding: 7px; background: var(--doc-soft); }
-.signature-grid { display: grid; grid-template-columns: repeat(2,1fr); margin-top: 8px; }
+.payment-box { border: 1px solid var(--doc-border); margin-top: 6px; padding: 5px 7px; background: var(--doc-soft); }
+.signature-grid { display: grid; grid-template-columns: repeat(2,1fr); margin-top: 6px; }
 .single-signature { grid-template-columns: 1fr; max-width: 50%; margin-left: auto; }
-.signature-box { border: 1px solid var(--doc-border); min-height: 95px; text-align: center; padding: 7px; display: grid; align-content: space-between; background: #fff; }
+.signature-box { border: 1px solid var(--doc-border); min-height: 85px; text-align: center; padding: 5px 7px; display: grid; align-content: space-between; background: #fff; }
 .signature-box strong { color: var(--doc-strong); }
 .signature-box + .signature-box { border-left: 0; }
 .signature-image {

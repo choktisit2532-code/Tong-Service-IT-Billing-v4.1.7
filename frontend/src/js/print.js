@@ -175,6 +175,24 @@ function rowUnits(item) {
   return Math.max(1, Math.ceil(String(item.description || '').length / 72));
 }
 
+function getFooterUnits(doc) {
+  if (!doc) return 7;
+  if (doc.document_type === 'RC') return 5.5;
+
+  const customerType = doc.customer_snapshot?.customer_type;
+  const hasBank = ['IN', 'BN'].includes(doc.document_type) &&
+    ((customerType === 'private' && doc.settings?.scb_bank_details) ||
+     (customerType === 'government' && doc.settings?.ktb_bank_details));
+
+  const quotationValidity = doc.document_type === 'QT' && doc.quotation_validity_days != null;
+  const hasTerms = Boolean(doc.remarks || doc.payment_terms || doc.delivery_days != null || quotationValidity);
+
+  let units = 4.5; // base: tfoot summary + signature grid
+  if (hasBank) units += 2.2;
+  if (hasTerms) units += 1.5;
+  return units;
+}
+
 // Keeps the exact same page groups for on-screen preview, browser printing and PDF.
 function paginateItems(items, doc) {
   const pages = [];
@@ -182,7 +200,7 @@ function paginateItems(items, doc) {
   let used = 0;
   items.forEach((item) => {
     const units = rowUnits(item);
-    const firstPageCapacity = 18;
+    const firstPageCapacity = 19;
     const continuationCapacity = 27;
     const capacity = pages.length === 0 ? firstPageCapacity : continuationCapacity;
     if (page.length && used + units > capacity) {
@@ -196,8 +214,8 @@ function paginateItems(items, doc) {
   if (page.length || !pages.length) pages.push(page);
 
   // Reserve the last page for totals, conditions, payment details and signatures.
-  const footerUnits = doc?.document_type === 'RC' ? 5.5 : 11;
-  const lastCapacity = pages.length === 1 ? 18 : 27;
+  const footerUnits = getFooterUnits(doc);
+  const lastCapacity = pages.length === 1 ? 19 : 27;
   const lastUnits = pages.at(-1).reduce((sum, item) => sum + rowUnits(item), 0);
   if (pages.at(-1).length > 1 && lastUnits + footerUnits > lastCapacity) {
     const carry = [];
