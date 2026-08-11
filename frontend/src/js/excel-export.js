@@ -371,7 +371,7 @@ export async function buildExcelWorkbook(doc, options = {}) {
   const paymentType = doc.receipt_payment_type || (doc.installment_number ? 'INSTALLMENT' : 'FULL');
   const paymentMethod = doc.receipt_payment_method || 'TRANSFER';
 
-  let leftText = `(${thaiBahtText(doc.net_total)})`;
+  let leftText = '';
   if (isRC) {
     const details = [];
     if (doc.payment_summary?.source_number) details.push(`อ้างอิง: ${doc.payment_summary.source_number}`);
@@ -379,7 +379,14 @@ export async function buildExcelWorkbook(doc, options = {}) {
     details.push(`วันที่รับชำระ: ${dateThai(doc.payment_received_date || doc.document_date)}`);
     if (doc.installment_number && doc.installment_count) details.push(`งวดที่: ${numeric(doc.installment_number)}/${numeric(doc.installment_count)}`);
     if (doc.withholding_certificate_number) details.push(`หนังสือหัก ณ ที่จ่าย: ${doc.withholding_certificate_number}`);
-    leftText += `\n` + details.join('\n');
+
+    const rcBahtVal = (doc.payment_summary && numeric(doc.payment_summary.remaining_after) > 0)
+      ? doc.payment_summary.remaining_after
+      : doc.net_total;
+
+    leftText = details.join('\n') + `\n(${thaiBahtText(rcBahtVal)})`;
+  } else {
+    leftText = `(${thaiBahtText(doc.net_total)})`;
   }
 
   mergeAndSet(sheet, `A${subtotalRow}:D${summaryEndRow}`, leftText, { bold:isRC, align:'left', fill:theme.soft2, color:theme.strong, size:13 });

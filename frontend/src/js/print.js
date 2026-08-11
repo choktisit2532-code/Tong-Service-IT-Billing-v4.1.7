@@ -100,10 +100,14 @@ function summaryRows(doc) {
     ]);
   }
 
+  const rcBahtAmount = (isRC && doc.payment_summary && Number(doc.payment_summary.remaining_after) > 0)
+    ? doc.payment_summary.remaining_after
+    : doc.net_total;
+
   const leftCellContent = isRC
     ? `<div class="rc-summary-left">
-        <div class="baht-text-main">(${thaiBahtText(doc.net_total)})</div>
         ${receiptPaymentDetails(doc)}
+        <div class="baht-text-main">(${thaiBahtText(rcBahtAmount)})</div>
        </div>`
     : thaiBahtText(doc.net_total);
 

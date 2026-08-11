@@ -132,6 +132,8 @@ body {
 .rc-summary-left {
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
   gap: 4px;
 }
 .baht-text-main {
@@ -139,9 +141,9 @@ body {
   font-size: 13px;
   color: var(--doc-strong);
   text-align: center;
-  border-bottom: 1px dashed var(--doc-border);
-  padding-bottom: 4px;
-  margin-bottom: 2px;
+  border-top: 1px dashed var(--doc-border);
+  padding-top: 4px;
+  margin-top: auto;
 }
 .rc-payment-info {
   font-size: 11px;
