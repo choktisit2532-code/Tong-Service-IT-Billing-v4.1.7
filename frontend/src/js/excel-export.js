@@ -389,7 +389,7 @@ export async function buildExcelWorkbook(doc, options = {}) {
     leftText = `(${thaiBahtText(doc.net_total)})`;
   }
 
-  mergeAndSet(sheet, `A${subtotalRow}:D${summaryEndRow}`, leftText, { bold:isRC, align:'left', fill:theme.soft2, color:theme.strong, size:13 });
+  mergeAndSet(sheet, `A${subtotalRow}:D${summaryEndRow}`, leftText, { bold:isRC, align:isRC ? 'left' : 'center', fill:theme.soft2, color:theme.strong, size:13 });
   borderRange(sheet, `A${subtotalRow}:F${summaryEndRow}`, theme.border);
 
   sheet.getRow(summaryEndRow + 1).height = 7;

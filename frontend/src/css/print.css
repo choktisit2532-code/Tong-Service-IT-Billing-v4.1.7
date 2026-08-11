@@ -123,11 +123,15 @@ body {
   vertical-align: middle;
 }
 .baht-text-cell {
-  text-align: left;
-  vertical-align: top;
+  text-align: center;
+  vertical-align: middle;
   font-weight: 600;
   background: var(--doc-soft-2);
   padding: 6px 8px;
+}
+.baht-text-cell-rc {
+  text-align: left;
+  vertical-align: top;
 }
 .rc-summary-left {
   display: flex;

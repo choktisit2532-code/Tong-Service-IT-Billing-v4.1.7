@@ -109,11 +109,11 @@ function summaryRows(doc) {
         ${receiptPaymentDetails(doc)}
         <div class="baht-text-main">(${thaiBahtText(rcBahtAmount)})</div>
        </div>`
-    : thaiBahtText(doc.net_total);
+    : `(${thaiBahtText(doc.net_total)})`;
 
   return rows.map(([label, value], index) => `
     <tr class="${index === rows.length - 1 ? 'net-row' : ''}">
-      ${index === 0 ? `<td colspan="4" rowspan="${rows.length}" class="baht-text-cell">${leftCellContent}</td>` : ''}
+      ${index === 0 ? `<td colspan="4" rowspan="${rows.length}" class="baht-text-cell ${isRC ? 'baht-text-cell-rc' : ''}">${leftCellContent}</td>` : ''}
       <th class="summary-label">${escapeHtml(label)}</th>
       <td class="summary-value">${typeof value === 'string' && value.startsWith('-') ? value : number(value)}</td>
     </tr>`).join('');
