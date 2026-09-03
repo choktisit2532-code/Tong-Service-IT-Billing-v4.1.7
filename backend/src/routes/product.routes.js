@@ -20,12 +20,17 @@ router.get('/suggestions', authorize('product.view'), asyncHandler(async (req, r
 }));
 
 router.get('/', authorize('product.view'), validate(masterDataListSchema, 'query'), asyncHandler(async (req, res) => {
+    res.set({
+        'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+        Pragma: 'no-cache',
+        Expires: '0'
+    });
     const { search, page, limit, status } = req.validatedQuery || req.query;
     const offset = (page - 1) * limit;
     const pattern = `%${search}%`;
     const statusCondition = `(
         $3 = 'all'
-        OR ($3 = 'active' AND active = TRUE)
+        OR ($3 = 'active' AND active IS DISTINCT FROM FALSE)
         OR ($3 = 'inactive' AND active = FALSE)
     )`;
 
@@ -34,7 +39,7 @@ router.get('/', authorize('product.view'), validate(masterDataListSchema, 'query
             `SELECT * FROM products
              WHERE ${statusCondition}
                AND ($1 = '' OR name ILIKE $2 OR COALESCE(sku, '') ILIKE $2 OR COALESCE(category, '') ILIKE $2)
-             ORDER BY active DESC, name
+             ORDER BY COALESCE(active, TRUE) DESC, name
              LIMIT $4 OFFSET $5`,
             [search, pattern, status, limit, offset]
         ),
@@ -51,6 +56,11 @@ router.get('/', authorize('product.view'), validate(masterDataListSchema, 'query
 }));
 
 router.get('/:id', authorize('product.view'), validate(idSchema, 'params'), asyncHandler(async (req, res) => {
+    res.set({
+        'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+        Pragma: 'no-cache',
+        Expires: '0'
+    });
     const result = await pool.query('SELECT * FROM products WHERE id = $1', [req.params.id]);
     if (!result.rows[0]) throw new AppError(404, 'ไม่พบสินค้า/บริการ', 'PRODUCT_NOT_FOUND');
     res.json({ data: result.rows[0] });
@@ -85,7 +95,7 @@ router.put('/:id', authorize('product.update'), validate(idSchema, 'params'), va
         const beforeResult = await client.query('SELECT * FROM products WHERE id = $1 FOR UPDATE', [req.params.id]);
         const before = beforeResult.rows[0];
         if (!before) throw new AppError(404, 'ไม่พบสินค้า/บริการ', 'PRODUCT_NOT_FOUND');
-        if (!before.active) throw new AppError(409, 'รายการนี้ถูกปิดใช้งานแล้ว กรุณากู้คืนก่อนแก้ไข', 'PRODUCT_INACTIVE');
+        if (before.active === false) throw new AppError(409, 'รายการนี้ถูกปิดใช้งานแล้ว กรุณากู้คืนก่อนแก้ไข', 'PRODUCT_INACTIVE');
 
         const b = req.body;
         const result = await client.query(
@@ -122,7 +132,7 @@ router.post('/:id/deactivate', authorize('product.deactivate'), validate(idSchem
                  deactivated_at = NOW(),
                  deactivated_by = $2,
                  deactivation_reason = $3
-             WHERE id = $1 AND active = TRUE
+             WHERE id = $1 AND active IS DISTINCT FROM FALSE
              RETURNING *`,
             [req.params.id, req.user.id, req.body.reason]
         );

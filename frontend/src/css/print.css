@@ -1,14 +1,32 @@
 @page { size: A4; margin: 0; }
 @font-face {
+  font-family: "Sarabun";
+  src: url("../assets/fonts/sarabun-full-400.woff") format("woff"),
+       url("../assets/fonts/sarabun-thai-400-normal.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Sarabun";
+  src: url("../assets/fonts/sarabun-full-700.woff") format("woff"),
+       url("../assets/fonts/sarabun-thai-700-normal.woff2") format("woff2");
+  font-weight: 500 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
   font-family: "TH Sarabun New";
-  src: url("../assets/fonts/sarabun-thai-400-normal.woff2") format("woff2");
+  src: url("../assets/fonts/sarabun-full-400.woff") format("woff"),
+       url("../assets/fonts/sarabun-thai-400-normal.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "TH Sarabun New";
-  src: url("../assets/fonts/sarabun-thai-700-normal.woff2") format("woff2");
+  src: url("../assets/fonts/sarabun-full-700.woff") format("woff"),
+       url("../assets/fonts/sarabun-thai-700-normal.woff2") format("woff2");
   font-weight: 500 800;
   font-style: normal;
   font-display: swap;
@@ -18,7 +36,10 @@ body {
   margin: 0;
   background: #e5e7eb;
   color: #111827;
-  font-family: "TH Sarabun New", "Sarabun", Tahoma, sans-serif;
+  font-family: "Sarabun", "TH Sarabun New", "Leelawadee UI", Tahoma, Arial, sans-serif;
+  font-variant-numeric: tabular-nums lining-nums;
+  -webkit-font-feature-settings: "lnum" 1, "tnum" 1;
+  font-feature-settings: "lnum" 1, "tnum" 1;
   --doc-soft: #eaf2ff;
   --doc-soft-2: #f5f8ff;
   --doc-strong: #315f9e;
@@ -64,7 +85,7 @@ body {
 .a4-sheet[data-document-type="DO"] { --doc-soft:#e5f6f5; --doc-soft-2:#f4fbfb; --doc-strong:#267277; --doc-border:#68a4a7; }
 .doc-header {
   display: grid;
-  grid-template-columns: 74px 1fr 150px;
+  grid-template-columns: 74px 1fr auto;
   gap: 12px;
   align-items: start;
   border-bottom: 3px solid var(--doc-strong);
@@ -75,8 +96,8 @@ body {
 .doc-logo { width: 64px; height: 64px; object-fit: contain; }
 .shop-info h1 { margin: 0; font-size: 18px; color: var(--doc-strong); }
 .shop-info p { margin: 2px 0; }
-.doc-title { text-align: right; }
-.doc-title h2 { margin: 0 0 5px; font-size: 20px; color: var(--doc-strong); }
+.doc-title { text-align: right; min-width: 170px; }
+.doc-title h2 { margin: 0 0 5px; font-size: 20px; white-space: nowrap; color: var(--doc-strong); }
 .doc-title strong { display: block; font-size: 14px; }
 .doc-title span { color: #374151; }
 .customer-grid { display: grid; grid-template-columns: 1.35fr .65fr; gap: 8px; margin-top: 8px; }
@@ -108,8 +129,18 @@ body {
   color: var(--doc-strong);
   font-weight: 700;
 }
-.doc-table .number { text-align: right; }
-.doc-table .center { text-align: center; }
+.doc-table .number {
+  text-align: right;
+  font-variant-numeric: tabular-nums lining-nums;
+  -webkit-font-feature-settings: "lnum" 1, "tnum" 1;
+  font-feature-settings: "lnum" 1, "tnum" 1;
+}
+.doc-table .center {
+  text-align: center;
+  font-variant-numeric: tabular-nums lining-nums;
+  -webkit-font-feature-settings: "lnum" 1, "tnum" 1;
+  font-feature-settings: "lnum" 1, "tnum" 1;
+}
 .doc-table .section-row td {
   font-weight: 700;
   text-align: center;
@@ -165,7 +196,9 @@ body {
 .summary-value {
   text-align: right;
   white-space: nowrap;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums lining-nums;
+  -webkit-font-feature-settings: "lnum" 1, "tnum" 1;
+  font-feature-settings: "lnum" 1, "tnum" 1;
 }
 .doc-table tfoot .net-row .summary-label,
 .doc-table tfoot .net-row .summary-value {

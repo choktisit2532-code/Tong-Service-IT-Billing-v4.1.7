@@ -1196,7 +1196,7 @@ async function updateDocument({ id, body, userId, role }) {
 }
 
 async function updateDocumentMetadata({ id, body, userId, role }) {
-    await withTransaction(async (client) => {
+    return withTransaction(async (client) => {
         await assertDocumentSchemaReady(client);
         const current = await getLockedDocument(client, id);
         if (!['admin', 'staff'].includes(role)) {
@@ -1316,8 +1316,23 @@ async function updateDocumentMetadata({ id, body, userId, role }) {
                 }
             }
         });
+
+        // The metadata endpoint is used by the quick editor. Returning the
+        // values already available in this transaction avoids re-reading the
+        // complete document, its items, relations, settings and payment data
+        // before the UI can acknowledge a simple change such as hiding a
+        // signature.
+        return {
+            ...current,
+            document_date: body.document_date,
+            due_date: dueDate,
+            remarks: body.remarks,
+            payment_terms: body.payment_terms,
+            quotation_validity_days: body.quotation_validity_days ?? null,
+            show_signature: Boolean(body.show_signature),
+            updated_by: userId
+        };
     }, { name: 'document.update_metadata' });
-    return getDocumentById(id);
 }
 
 async function getDocumentImpact(id) {

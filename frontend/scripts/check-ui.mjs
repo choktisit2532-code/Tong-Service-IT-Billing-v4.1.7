@@ -66,6 +66,11 @@ if (!appJs.includes('normaliseDocumentCustomers')) throw new Error('Document cus
 if (!appJs.includes('if (value == null) return true;')) throw new Error('Legacy customers with active=NULL are still hidden');
 if (!appJs.includes("$('#doc-quick-customer').classList.add('hidden');")) throw new Error('Quick customer form is not collapsed when opening the document modal');
 if (!appJs.includes("/customers/document-options?_=${Date.now()}")) throw new Error('Document customer dropdown does not use its dedicated cache-busted endpoint');
+if (!appJs.includes("/products?limit=200&page=1&status=${status}&search=${encodeURIComponent(search)}`, { cache: 'no-store' }")) throw new Error('Product list can still show stale data after an edit');
+if (!appJs.includes("request('/products?limit=200&page=1', { cache: 'no-store' })")) throw new Error('Initial product load can still use stale cached data');
+if (!appJs.includes('await refreshProductSuggestions(); showToast(id?')) throw new Error('Product suggestions are not refreshed after saving an edit');
+if (!appJs.includes('loadDocuments({ preserveTable: true })')) throw new Error('Document edits still block on a visible table reload');
+if (!appJs.includes('void Promise.allSettled([')) throw new Error('Document edit follow-up refreshes still block the save flow');
 if (!appJs.includes("setDocumentCustomerLoadStatus('กำลังโหลดรายชื่อลูกค้า...')")) throw new Error('Customer loading status is not displayed in the document modal');
 if (!appJs.includes('โหลดรายชื่อลูกค้าไม่สำเร็จ กรุณากดลองใหม่')) throw new Error('Customer retry state is not displayed in the document modal');
 if (!appJs.includes("const customerLoad = refreshDocumentCustomers();")) throw new Error('Document modal still waits before customer loading starts');

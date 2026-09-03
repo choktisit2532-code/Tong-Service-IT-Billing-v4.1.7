@@ -58,6 +58,13 @@ function receiptAmountLabel(doc) {
   return 'รับชำระครั้งนี้';
 }
 
+function shouldShowReceiptBalance(doc) {
+  if (!doc.payment_summary) return false;
+  const remaining = Number(doc.payment_summary.remaining_after || 0);
+  const paymentType = doc.receipt_payment_type || (doc.installment_number ? 'INSTALLMENT' : 'FULL');
+  return remaining > 0.005 || paymentType !== 'FULL' || Boolean(doc.installment_number || doc.installment_count);
+}
+
 function summaryRows(doc) {
   const isRC = doc.document_type === 'RC';
   const usesSourceDetails = isRC && doc.payment_summary && doc.receipt_source_items?.length;
@@ -81,7 +88,9 @@ function summaryRows(doc) {
     if (Number(doc.withholding_amount) > 0 || Number(doc.transfer_fee) > 0) {
       rows.push(['ยอดรับสุทธิ', doc.net_total]);
     }
-    rows.push(['ยอดคงเหลือ', doc.payment_summary.remaining_after]);
+    if (shouldShowReceiptBalance(doc)) {
+      rows.push(['ยอดคงเหลือหลังรับชำระ', doc.payment_summary.remaining_after]);
+    }
   } else if (isRC && Number(doc.withholding_amount) > 0) {
     rows.push([`หัก ณ ที่จ่าย ${Number(doc.withholding_rate)}%`, `-${number(doc.withholding_amount)}`]);
   }

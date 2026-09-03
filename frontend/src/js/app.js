@@ -431,7 +431,7 @@ async function loadInitialData() {
     // a NULL `active` value as inactive when status=active is requested.
     // We apply the single source of truth (`isActiveRecord`) below instead.
     request('/customers?limit=200&page=1&status=all', { cache: 'no-store' }),
-    request('/products?limit=200&page=1'),
+    request('/products?limit=200&page=1', { cache: 'no-store' }),
     // Keep the page usable during a rolling deployment where the frontend
     // may become live a few seconds before the new backend route.
     request('/products/suggestions', { cache: 'no-store' }).catch(() => ({ data: [] }))
@@ -709,7 +709,7 @@ async function loadProducts(search = '') {
   const status = $('#product-status-filter')?.value || state.productStatus || 'active';
   state.productStatus = status;
   $('#products-table').innerHTML = tableLoading(7, 'กำลังโหลดสินค้าและบริการ...');
-  const result = await request(`/products?limit=200&page=1&status=${status}&search=${encodeURIComponent(search)}`);
+  const result = await request(`/products?limit=200&page=1&status=${status}&search=${encodeURIComponent(search)}`, { cache: 'no-store' });
   state.products = result.data;
   $('#product-count').textContent = `${result.pagination.total} รายการ`;
   $('#products-table').innerHTML = result.data.length ? result.data.map((p) => {
@@ -757,11 +757,11 @@ async function refreshProductSuggestions() {
   return state.productSuggestions;
 }
 
-async function loadDocuments() {
+async function loadDocuments({ preserveTable = false } = {}) {
   const search = $('#document-search').value.trim();
   const type = $('#document-type-filter').value;
   const status = $('#document-status-filter').value;
-  $('#documents-table').innerHTML = tableLoading(8, 'กำลังโหลดเอกสาร...');
+  if (!preserveTable) $('#documents-table').innerHTML = tableLoading(8, 'กำลังโหลดเอกสาร...');
   const params = new URLSearchParams({ limit:'100', page:'1', search });
   if (type) params.set('type', type);
   if (status) params.set('status', status);
@@ -1087,7 +1087,7 @@ $('#customer-status-filter').addEventListener('change',()=>loadCustomers($('#cus
 
 $('#product-form').addEventListener('submit', async (event) => {
   event.preventDefault(); const button=event.submitter; setBusy(button,true);
-  try { const id=$('#product-edit-id').value; await request(id?`/products/${id}`:'/products',{method:id?'PUT':'POST',body:JSON.stringify(productPayload())}); resetProductForm(); await loadProducts($('#product-search').value); showToast(id?'แก้ไขสินค้า/บริการสำเร็จ':'เพิ่มสินค้า/บริการสำเร็จ'); } catch(error){showGlobalError(error);} finally{setBusy(button,false);}
+  try { const id=$('#product-edit-id').value; await request(id?`/products/${id}`:'/products',{method:id?'PUT':'POST',body:JSON.stringify(productPayload())}); resetProductForm(); await loadProducts($('#product-search').value); await refreshProductSuggestions(); showToast(id?'แก้ไขสินค้า/บริการสำเร็จ':'เพิ่มสินค้า/บริการสำเร็จ'); } catch(error){showGlobalError(error);} finally{setBusy(button,false);}
 });
 $('#product-cancel-edit').addEventListener('click', resetProductForm);
 $('#product-search').addEventListener('input', debounce((e)=>loadProducts(e.target.value).catch(showGlobalError),350));
@@ -2335,7 +2335,18 @@ $('#document-form').addEventListener('submit', async (event) => {
     // local suggestion cache now so the next document can use it immediately
     // without requiring a full page reload or opening the products screen.
     const refreshSuggestions = editingId ? Promise.resolve() : refreshProductSuggestions().catch(() => undefined);
-    await Promise.all([loadDashboard(), loadDocuments(), refreshSuggestions]);
+    if (editingId) {
+      // The save response is authoritative. Refresh secondary screens in the
+      // background so a small metadata change does not keep the user waiting
+      // or replace the current table with a loading placeholder.
+      void Promise.allSettled([
+        loadDashboard(),
+        loadDocuments({ preserveTable: true }),
+        refreshSuggestions
+      ]);
+    } else {
+      await Promise.all([loadDashboard(), loadDocuments(), refreshSuggestions]);
+    }
     if (!editingId && confirm('สร้างเอกสารสำเร็จ ต้องการเปิดหน้าพิมพ์หรือไม่?')) {
       window.open(`./print.html?id=${result.data.id}`, '_blank', 'noopener');
     }

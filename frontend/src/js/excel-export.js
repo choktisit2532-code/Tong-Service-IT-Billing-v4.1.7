@@ -140,6 +140,13 @@ function receiptAmountLabel(doc) {
   return 'รับชำระครั้งนี้';
 }
 
+function shouldShowReceiptBalance(doc) {
+  if (!doc.payment_summary) return false;
+  const remaining = numeric(doc.payment_summary.remaining_after);
+  const paymentType = doc.receipt_payment_type || (doc.installment_number ? 'INSTALLMENT' : 'FULL');
+  return remaining > 0.005 || paymentType !== 'FULL' || Boolean(doc.installment_number || doc.installment_count);
+}
+
 function documentSummaryLabel(doc) {
   if (doc.document_type === 'RC') return numeric(doc.withholding_amount) > 0 || numeric(doc.transfer_fee) > 0 ? 'ยอดรับสุทธิ' : receiptAmountLabel(doc);
   if (doc.document_type === 'BN') return 'ยอดรวมใบวางบิล';
@@ -166,6 +173,13 @@ function formulaCell(cell, formula, result, options = {}) {
   cell.alignment = { vertical:'middle', horizontal:options.align || 'right', wrapText:true };
   if (options.numberFormat) cell.numFmt = options.numberFormat;
   if (options.fill) cell.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:argb(options.fill) } };
+}
+
+function excelFormulaText(value) {
+  return String(value || '')
+    .split(/\r?\n/)
+    .map((line) => `"${line.replaceAll('"', '""')}"`)
+    .join('&CHAR(10)&');
 }
 
 export async function buildExcelWorkbook(doc, options = {}) {
@@ -353,13 +367,16 @@ export async function buildExcelWorkbook(doc, options = {}) {
   summaryRow += 1;
   const netRow = summaryRow;
   setValue(sheet.getCell(summaryRow, 5), usesSourceDetails ? receiptAmountLabel(doc) : documentSummaryLabel(doc), { bold:true, align:'right', fill:theme.strong, color:'FFFFFF', size:14 });
-  setValue(sheet.getCell(summaryRow, 6), isRC ? numeric(doc.grand_total) : displayGrandTotal, { bold:true, fill:theme.strong, color:'FFFFFF', size:14, numberFormat:CURRENCY_FORMAT });
+  const summaryAmount = usesSourceDetails
+    ? numeric(doc.grand_total)
+    : isRC ? numeric(doc.net_total) : displayGrandTotal;
+  setValue(sheet.getCell(summaryRow, 6), summaryAmount, { bold:true, fill:theme.strong, color:'FFFFFF', size:14, numberFormat:CURRENCY_FORMAT });
 
   let remainingRow = null;
-  if (usesSourceDetails) {
+  if (usesSourceDetails && shouldShowReceiptBalance(doc)) {
     summaryRow += 1;
     remainingRow = summaryRow;
-    setValue(sheet.getCell(summaryRow, 5), 'ยอดคงเหลือ', { bold:true, align:'right', fill:theme.soft2, color:theme.strong });
+    setValue(sheet.getCell(summaryRow, 5), 'ยอดคงเหลือหลังรับชำระ', { bold:true, align:'right', fill:theme.soft2, color:theme.strong });
     setValue(sheet.getCell(summaryRow, 6), numeric(doc.payment_summary.remaining_after), { bold:true, align:'right', fill:theme.soft2, numberFormat:CURRENCY_FORMAT });
   }
 
@@ -389,7 +406,20 @@ export async function buildExcelWorkbook(doc, options = {}) {
     leftText = `(${thaiBahtText(doc.net_total)})`;
   }
 
-  mergeAndSet(sheet, `A${subtotalRow}:D${summaryEndRow}`, leftText, { bold:isRC, align:isRC ? 'left' : 'center', fill:theme.soft2, color:theme.strong, size:13 });
+  const leftCell = mergeAndSet(sheet, `A${subtotalRow}:D${summaryEndRow}`, leftText, { bold:isRC, align:isRC ? 'left' : 'center', fill:theme.soft2, color:theme.strong, size:13 });
+  const deductionRows = [withholdingRow, transferFeeRow].filter(Boolean);
+  const rcReceivedExpression = usesSourceDetails
+    ? deductionRows.reduce((formula, row) => `${formula}-F${row}`, `F${netRow}`)
+    : `F${netRow}`;
+  const bahtExpression = isRC && remainingRow && numeric(doc.payment_summary?.remaining_after) > 0
+    ? `F${remainingRow}`
+    : isRC ? rcReceivedExpression : `F${netRow}`;
+  const detailText = isRC ? leftText.slice(0, leftText.lastIndexOf('\n(')) : '';
+  const detailFormula = detailText ? `${excelFormulaText(detailText)}&CHAR(10)&` : '';
+  leftCell.value = {
+    formula:`${detailFormula}"("&BAHTTEXT(${bahtExpression})&")"`,
+    result:leftText
+  };
   borderRange(sheet, `A${subtotalRow}:F${summaryEndRow}`, theme.border);
 
   sheet.getRow(summaryEndRow + 1).height = 7;

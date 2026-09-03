@@ -69,6 +69,7 @@ for (const type of Object.keys(typeTotals)) {
   if (type === 'RC') {
     fixture.grand_total = 500;
     fixture.net_total = 400;
+    fixture.receipt_payment_type = 'PARTIAL';
     fixture.receipt_source_items = fixture.items.map((item) => ({ ...item }));
     fixture.receipt_source_items[1].description = 'รายละเอียดจากใบแจ้งหนี้ต้นทาง';
     fixture.payment_summary = {
@@ -93,16 +94,65 @@ for (const type of Object.keys(typeTotals)) {
   assert.equal(sheet.getCell('A12').value, 'ลำดับ');
   assert.equal(sheet.getCell('F14').value.formula, 'IF(OR(C14="",E14=""),"",C14*E14)');
   assert.ok(sheet.getCell('F19').value.formula?.startsWith('SUM('));
+  const formulaCells = [];
+  sheet.eachRow((row) => row.eachCell((cell) => {
+    if (cell.value?.formula) formulaCells.push(cell.value.formula);
+  }));
+  assert.ok(formulaCells.some((formula) => formula.includes('BAHTTEXT(')), `${type} is missing a dynamic BAHTTEXT formula`);
   if (type === 'RC') {
     assert.equal(sheet.getCell('B14').value, 'รายละเอียดจากใบแจ้งหนี้ต้นทาง');
-    const allText = [];
-    sheet.eachRow((row) => row.eachCell((cell) => allText.push(String(cell.value || ''))));
-    assert.ok(allText.some((value) => value.includes('ยอดชำระครั้งนี้: 500.00 บาท')));
+    let paymentRow = null;
+    sheet.eachRow((row) => {
+      if (row.getCell(5).value === 'ยอดชำระบางส่วน') paymentRow = row.number;
+    });
+    assert.ok(paymentRow, 'Receipt summary is missing the current payment row');
+    assert.equal(sheet.getCell(`F${paymentRow}`).value, 500);
+    const remainingLabels = [];
+    sheet.eachRow((row) => remainingLabels.push(row.getCell(5).value));
+    assert.ok(remainingLabels.includes('ยอดคงเหลือหลังรับชำระ'), 'Partial receipt must show its remaining balance');
+    assert.ok(formulaCells.some((formula) => /BAHTTEXT\(F\d+\)/.test(formula)), 'Receipt BAHTTEXT does not reference a live amount cell');
   }
   const bytes = await workbook.xlsx.writeBuffer();
   assert.ok(bytes.byteLength > 5_000);
   if (type === 'RC') receiptWorkbook = workbook;
 }
+
+const directReceipt = documentFixture('RC');
+directReceipt.grand_total = 500;
+directReceipt.net_total = 400;
+const directReceiptWorkbook = await buildExcelWorkbook(directReceipt, { ExcelJS, imageResolver });
+const directReceiptSheet = directReceiptWorkbook.worksheets[0];
+let directNetRow = null;
+directReceiptSheet.eachRow((row) => {
+  if (row.getCell(5).value === 'ยอดรับสุทธิ') directNetRow = row.number;
+});
+assert.ok(directNetRow, 'Direct receipt is missing the net receipt row');
+assert.equal(directReceiptSheet.getCell(`F${directNetRow}`).value, 400);
+const directBahtFormula = directReceiptSheet.getCell(`A${directNetRow - 2}`).value?.formula;
+assert.ok(directBahtFormula?.includes(`BAHTTEXT(F${directNetRow})`), 'Direct receipt BAHTTEXT must reference the net receipt cell without deducting twice');
+
+const fullReceipt = documentFixture('RC');
+fullReceipt.receipt_payment_type = 'FULL';
+fullReceipt.grand_total = 3000;
+fullReceipt.net_total = 2900;
+fullReceipt.receipt_source_items = fullReceipt.items.map((item) => ({ ...item }));
+fullReceipt.payment_summary = {
+  source_number:'IN-6908-002', source_subtotal:3000, source_discount:0,
+  source_total:3000, paid_before:0, current_payment:3000, remaining_after:0
+};
+const fullReceiptWorkbook = await buildExcelWorkbook(fullReceipt, { ExcelJS, imageResolver });
+const fullReceiptLabels = [];
+fullReceiptWorkbook.worksheets[0].eachRow((row) => fullReceiptLabels.push(row.getCell(5).value));
+assert.ok(!fullReceiptLabels.includes('ยอดคงเหลือหลังรับชำระ'), 'Full receipt with zero balance must hide the remaining balance row');
+
+const finalInstallment = { ...fullReceipt, receipt_payment_type:'INSTALLMENT', installment_number:3, installment_count:3 };
+const finalInstallmentWorkbook = await buildExcelWorkbook(finalInstallment, { ExcelJS, imageResolver });
+const finalInstallmentRows = [];
+finalInstallmentWorkbook.worksheets[0].eachRow((row) => {
+  if (row.getCell(5).value === 'ยอดคงเหลือหลังรับชำระ') finalInstallmentRows.push(row.number);
+});
+assert.equal(finalInstallmentRows.length, 1, 'Final installment must keep the zero remaining balance row');
+assert.equal(finalInstallmentWorkbook.worksheets[0].getCell(`F${finalInstallmentRows[0]}`).value, 0);
 
 if (process.env.EXCEL_PREVIEW_OUTPUT && receiptWorkbook) {
   const output = path.resolve(process.env.EXCEL_PREVIEW_OUTPUT);

@@ -6,7 +6,7 @@ test('combines catalog and document history without duplicate names', () => {
     const result = mergeProductSuggestions(
         [{ id: 7, name: 'ลงโปรแกรม', item_type: 'service', unit: 'เครื่อง', price: '300', active: true }],
         [
-            { name: 'ลงโปรแกรม', item_type: 'service', unit: 'งาน', price: '450', last_used_at: '2026-08-03' },
+            { product_id: 7, name: 'ลงโปรแกรม', item_type: 'service', unit: 'งาน', price: '450', last_used_at: '2026-08-03' },
             { name: 'สาย LAN', item_type: 'product', unit: 'เมตร', price: '20', last_used_at: '2026-08-02' }
         ]
     );
@@ -18,8 +18,8 @@ test('combines catalog and document history without duplicate names', () => {
         sku: null,
         name: 'ลงโปรแกรม',
         item_type: 'service',
-        unit: 'งาน',
-        price: '450',
+        unit: 'เครื่อง',
+        price: '300',
         category: null,
         active: true,
         source: 'catalog_history',
@@ -27,6 +27,18 @@ test('combines catalog and document history without duplicate names', () => {
     });
     assert.equal(result[1].source, 'document_history');
     assert.equal(result[1].product_id, null);
+});
+
+test('linked document history follows the current catalog name after an edit', () => {
+    const result = mergeProductSuggestions(
+        [{ id: 12, name: 'กล่องรับสัญญาณดาวเทียม PSI รุ่น S9', item_type: 'product', unit: 'ตัว', price: '950', active: true }],
+        [{ product_id: 12, name: 'กล่องรับสัญญาณดาวเทียมPSI รุ่น S6', item_type: 'product', unit: 'ตัว', price: '950', last_used_at: '2026-08-16' }]
+    );
+
+    assert.equal(result.length, 1);
+    assert.equal(result[0].name, 'กล่องรับสัญญาณดาวเทียม PSI รุ่น S9');
+    assert.equal(result[0].product_id, 12);
+    assert.equal(result[0].source, 'catalog_history');
 });
 
 test('explicitly inactive catalog names stay hidden from history suggestions', () => {
