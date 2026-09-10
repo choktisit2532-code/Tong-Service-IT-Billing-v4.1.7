@@ -8,6 +8,7 @@ const root = document.getElementById('print-document');
 const pageCount = document.getElementById('page-count');
 const pageWarning = document.getElementById('page-warning');
 const printModeSelect = document.getElementById('print-mode-select');
+const printDateSelect = document.getElementById('print-date-select');
 const printButton = document.getElementById('print-button');
 const excelButton = document.getElementById('excel-button');
 let currentDocument = null;
@@ -26,6 +27,16 @@ function applyPrintMode(mode) {
 }
 applyPrintMode(printModeSelect.value);
 printModeSelect.addEventListener('change', (event) => applyPrintMode(event.currentTarget.value));
+
+const savedDateMode = localStorage.getItem('tong_billing_print_date_mode') || 'show';
+if (printDateSelect) {
+  printDateSelect.value = ['show', 'hide', 'dots'].includes(savedDateMode) ? savedDateMode : 'show';
+  printDateSelect.addEventListener('change', (event) => {
+    localStorage.setItem('tong_billing_print_date_mode', event.currentTarget.value);
+    if (currentDocument) renderPages(currentDocument);
+  });
+}
+
 printButton.addEventListener('click', () => window.print());
 excelButton.addEventListener('click', async () => {
   if (!currentDocument || !window.ExcelJS) return alert('ยังโหลดข้อมูลสำหรับส่งออกไม่สำเร็จ');
@@ -35,7 +46,8 @@ excelButton.addEventListener('click', async () => {
   try {
     await downloadExcelDocument(currentDocument, {
       ExcelJS:window.ExcelJS,
-      monochrome:document.body.classList.contains('print-monochrome')
+      monochrome:document.body.classList.contains('print-monochrome'),
+      dateMode:printDateSelect ? printDateSelect.value : 'show'
     });
   } catch (error) {
     alert(`สร้างไฟล์ Excel ไม่สำเร็จ: ${error.message}`);
@@ -250,22 +262,30 @@ function itemRows(items, startSequence) {
   return { html, sequence };
 }
 
-function header(doc, pageNumber) {
+function header(doc, pageNumber, dateMode = 'show') {
   if (pageNumber > 1) return `<header class="continued-title"><strong>${DOC_LABELS[doc.document_type]} (ต่อ)</strong><span>${escapeHtml(doc.document_number)}</span></header>`;
   const shopName = [doc.settings.shop_name_th, doc.settings.shop_name_en].filter(Boolean).join(' ');
   const contactNumber = String(doc.settings.shop_phone || '0864733795').replace(/\D/g, '') || '0864733795';
+  let dateHtml = '';
+  if (dateMode === 'show') {
+    dateHtml = `<span>วันที่ ${dateThai(doc.document_date)}</span>`;
+  } else if (dateMode === 'dots') {
+    dateHtml = '<span>วันที่ ........................................</span>';
+  }
   return `<header class="doc-header">
     <img class="doc-logo" src="${escapeHtml(doc.settings.logo_url || './assets/logo-placeholder.svg')}" alt="โลโก้" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src='./assets/logo-placeholder.svg'">
     <div class="shop-info"><h1>${escapeHtml(shopName)}</h1><p>${escapeHtml(doc.settings.shop_address || '')}</p><p>เลขผู้เสียภาษี ${escapeHtml(doc.settings.shop_tax_id || '-')} · โทร/ไอดีไลน์ ${escapeHtml(contactNumber)}</p></div>
-    <div class="doc-title"><h2>${DOC_LABELS[doc.document_type]}</h2><strong>เลขที่ ${escapeHtml(doc.document_number)}</strong><span>วันที่ ${dateThai(doc.document_date)}</span></div>
+    <div class="doc-title"><h2>${DOC_LABELS[doc.document_type]}</h2><strong>เลขที่ ${escapeHtml(doc.document_number)}</strong>${dateHtml}</div>
   </header>`;
 }
 
-function customerBlock(doc) {
+function customerBlock(doc, dateMode = 'show') {
   const customer = doc.customer_snapshot;
+  const showDue = dateMode === 'show' && doc.due_date;
+  const dueContent = dateMode === 'hide' ? '-' : (showDue ? dateThai(doc.due_date) : '-');
   return `<section class="customer-grid">
     <div class="box"><strong>นามลูกค้า / Name</strong><p>${escapeHtml(customer.name)}</p><strong>ที่อยู่ / Address</strong><p>${escapeHtml(customer.address || '-')}</p></div>
-    <div class="box"><p><strong>เลขผู้เสียภาษี:</strong> ${escapeHtml(customer.tax_id || '-')}</p><p><strong>โทร:</strong> ${escapeHtml(customer.phone || '-')}</p><p><strong>ครบกำหนด:</strong> ${doc.due_date ? dateThai(doc.due_date) : '-'}</p></div>
+    <div class="box"><p><strong>เลขผู้เสียภาษี:</strong> ${escapeHtml(customer.tax_id || '-')}</p><p><strong>โทร:</strong> ${escapeHtml(customer.phone || '-')}</p><p><strong>ครบกำหนด:</strong> ${dueContent}</p></div>
   </section>`;
 }
 
@@ -295,6 +315,7 @@ function renderPages(doc) {
   const groups = paginateItems(displayItems, doc);
   const totalPages = groups.length;
   let sequence = 0;
+  const dateMode = printDateSelect ? printDateSelect.value : (localStorage.getItem('tong_billing_print_date_mode') || 'show');
   root.dataset.documentType = doc.document_type;
   root.innerHTML = groups.map((items, index) => {
     const pageNumber = index + 1;
@@ -302,7 +323,7 @@ function renderPages(doc) {
     const rendered = itemRows(items, sequence);
     sequence = rendered.sequence;
     return `<section class="a4-sheet" data-document-type="${doc.document_type}">
-      ${statusWatermark(doc)}${header(doc, pageNumber)}${pageNumber === 1 ? customerBlock(doc) : ''}
+      ${statusWatermark(doc)}${header(doc, pageNumber, dateMode)}${pageNumber === 1 ? customerBlock(doc, dateMode) : ''}
       ${table(rendered.html, isLast ? summaryRows(doc) : '')}
       ${isLast ? finalBlocks(doc) : ''}
       <div class="page-number">หน้า ${pageNumber}/${totalPages}</div>

@@ -52,6 +52,7 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   padding: 10px;
   background: #111827;

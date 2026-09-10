@@ -40,6 +40,8 @@ if (!printCss.includes('sarabun-thai-400-normal.woff2')) throw new Error('Embedd
 if (!printCss.includes('sarabun-thai-700-normal.woff2')) throw new Error('Embedded bold Thai font is not configured');
 if (!printHtml.includes('id="page-count"') || !printHtml.includes('id="page-warning"')) throw new Error('A4 page preview status is missing');
 if (!printHtml.includes('id="excel-button"')) throw new Error('Excel export button is missing');
+if (!printHtml.includes('id="print-date-select"')) throw new Error('Date mode select is missing in print.html');
+if (!printJs.includes('printDateSelect')) throw new Error('Date mode select is not wired in print.js');
 if (!printJs.includes('paginateItems') || !printJs.includes('หน้า ${pageNumber}/${totalPages}')) throw new Error('Print preview is not paginated');
 if (!printHtml.includes('./vendor/exceljs.min.js')) throw new Error('Styled Excel engine is not loaded');
 if (!printJs.includes('downloadExcelDocument')) throw new Error('Editable Excel export is not wired');

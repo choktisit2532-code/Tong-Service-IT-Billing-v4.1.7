@@ -260,10 +260,28 @@ export async function buildExcelWorkbook(doc, options = {}) {
   mergeAndSet(sheet, 'E1:F2', DOC_LABELS[doc.document_type] || doc.document_type, { size:20, bold:true, align:'center', color:'FFFFFF', fill:theme.strong });
   setValue(sheet.getCell('E3'), 'เลขที่', { bold:true, align:'right', fill:theme.soft2, color:theme.strong });
   setValue(sheet.getCell('F3'), String(doc.document_number || ''), { bold:true, align:'center', fill:theme.soft2, numberFormat:'@' });
-  setValue(sheet.getCell('E4'), 'วันที่', { bold:true, align:'right', fill:theme.soft2, color:theme.strong });
-  setValue(sheet.getCell('F4'), dateThai(doc.document_date), { align:'center', fill:theme.soft2 });
-  setValue(sheet.getCell('E5'), 'ครบกำหนด', { bold:true, align:'right', fill:theme.soft2, color:theme.strong });
-  setValue(sheet.getCell('F5'), doc.due_date ? dateThai(doc.due_date) : '-', { align:'center', fill:theme.soft2 });
+  const dateMode = options.dateMode || 'show';
+  if (dateMode === 'hide') {
+    setValue(sheet.getCell('E4'), '', { fill:theme.soft2 });
+    setValue(sheet.getCell('F4'), '', { fill:theme.soft2 });
+    if (!doc.due_date) {
+      setValue(sheet.getCell('E5'), '', { fill:theme.soft2 });
+      setValue(sheet.getCell('F5'), '', { fill:theme.soft2 });
+    } else {
+      setValue(sheet.getCell('E5'), 'ครบกำหนด', { bold:true, align:'right', fill:theme.soft2, color:theme.strong });
+      setValue(sheet.getCell('F5'), dateThai(doc.due_date), { align:'center', fill:theme.soft2 });
+    }
+  } else if (dateMode === 'dots') {
+    setValue(sheet.getCell('E4'), 'วันที่', { bold:true, align:'right', fill:theme.soft2, color:theme.strong });
+    setValue(sheet.getCell('F4'), '........................................', { align:'center', fill:theme.soft2 });
+    setValue(sheet.getCell('E5'), 'ครบกำหนด', { bold:true, align:'right', fill:theme.soft2, color:theme.strong });
+    setValue(sheet.getCell('F5'), doc.due_date ? dateThai(doc.due_date) : '-', { align:'center', fill:theme.soft2 });
+  } else {
+    setValue(sheet.getCell('E4'), 'วันที่', { bold:true, align:'right', fill:theme.soft2, color:theme.strong });
+    setValue(sheet.getCell('F4'), dateThai(doc.document_date), { align:'center', fill:theme.soft2 });
+    setValue(sheet.getCell('E5'), 'ครบกำหนด', { bold:true, align:'right', fill:theme.soft2, color:theme.strong });
+    setValue(sheet.getCell('F5'), doc.due_date ? dateThai(doc.due_date) : '-', { align:'center', fill:theme.soft2 });
+  }
   borderRange(sheet, 'E1:F5', theme.border);
 
   mergeAndSet(sheet, 'A7:F7', 'ข้อมูลลูกค้า / Customer information', { bold:true, color:'FFFFFF', fill:theme.strong });

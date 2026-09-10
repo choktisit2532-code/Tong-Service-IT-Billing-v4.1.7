@@ -154,6 +154,23 @@ finalInstallmentWorkbook.worksheets[0].eachRow((row) => {
 assert.equal(finalInstallmentRows.length, 1, 'Final installment must keep the zero remaining balance row');
 assert.equal(finalInstallmentWorkbook.worksheets[0].getCell(`F${finalInstallmentRows[0]}`).value, 0);
 
+// Verify dateMode: 'hide' clears date cells
+const hideDateDo = documentFixture('DO');
+hideDateDo.due_date = null;
+const hideDateWorkbook = await buildExcelWorkbook(hideDateDo, { ExcelJS, imageResolver, dateMode:'hide' });
+const hideDateSheet = hideDateWorkbook.worksheets[0];
+assert.equal(hideDateSheet.getCell('E4').value, '', 'dateMode: hide must clear E4 label');
+assert.equal(hideDateSheet.getCell('F4').value, '', 'dateMode: hide must clear F4 value');
+assert.equal(hideDateSheet.getCell('E5').value, '', 'dateMode: hide without due_date must clear E5');
+assert.equal(hideDateSheet.getCell('F5').value, '', 'dateMode: hide without due_date must clear F5');
+
+// Verify dateMode: 'dots' displays dotted line
+const dotsDateQt = documentFixture('QT');
+const dotsDateWorkbook = await buildExcelWorkbook(dotsDateQt, { ExcelJS, imageResolver, dateMode:'dots' });
+const dotsDateSheet = dotsDateWorkbook.worksheets[0];
+assert.equal(dotsDateSheet.getCell('E4').value, 'วันที่', 'dateMode: dots must keep E4 as วันที่');
+assert.ok(String(dotsDateSheet.getCell('F4').value).includes('...'), 'dateMode: dots must show dotted line in F4');
+
 if (process.env.EXCEL_PREVIEW_OUTPUT && receiptWorkbook) {
   const output = path.resolve(process.env.EXCEL_PREVIEW_OUTPUT);
   await fs.mkdir(path.dirname(output), { recursive:true });
