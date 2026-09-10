@@ -171,6 +171,28 @@ const dotsDateSheet = dotsDateWorkbook.worksheets[0];
 assert.equal(dotsDateSheet.getCell('E4').value, 'วันที่', 'dateMode: dots must keep E4 as วันที่');
 assert.ok(String(dotsDateSheet.getCell('F4').value).includes('...'), 'dateMode: dots must show dotted line in F4');
 
+// Verify dateMode: 'hide' and 'dots' on RC payment details box
+const hideRc = documentFixture('RC');
+hideRc.payment_received_date = '2026-09-10';
+const hideRcWorkbook = await buildExcelWorkbook(hideRc, { ExcelJS, imageResolver, dateMode:'hide' });
+let hideRcText = '';
+hideRcWorkbook.worksheets[0].eachRow((row) => {
+  const v = JSON.stringify(row.getCell(1).value || '');
+  if (v.includes('ช่องทาง:')) hideRcText = v;
+});
+assert.ok(hideRcText.includes('ช่องทาง:'), 'RC must have payment info');
+assert.ok(!hideRcText.includes('วันที่รับชำระ'), 'RC with dateMode: hide must not show วันที่รับชำระ');
+
+const dotsRc = documentFixture('RC');
+dotsRc.payment_received_date = '2026-09-10';
+const dotsRcWorkbook = await buildExcelWorkbook(dotsRc, { ExcelJS, imageResolver, dateMode:'dots' });
+let dotsRcText = '';
+dotsRcWorkbook.worksheets[0].eachRow((row) => {
+  const v = JSON.stringify(row.getCell(1).value || '');
+  if (v.includes('ช่องทาง:')) dotsRcText = v;
+});
+assert.ok(dotsRcText.includes('วันที่รับชำระ: ...'), 'RC with dateMode: dots must show dotted วันที่รับชำระ');
+
 if (process.env.EXCEL_PREVIEW_OUTPUT && receiptWorkbook) {
   const output = path.resolve(process.env.EXCEL_PREVIEW_OUTPUT);
   await fs.mkdir(path.dirname(output), { recursive:true });

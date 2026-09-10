@@ -77,7 +77,7 @@ function shouldShowReceiptBalance(doc) {
   return remaining > 0.005 || paymentType !== 'FULL' || Boolean(doc.installment_number || doc.installment_count);
 }
 
-function summaryRows(doc) {
+function summaryRows(doc, dateMode = 'show') {
   const isRC = doc.document_type === 'RC';
   const usesSourceDetails = isRC && doc.payment_summary && doc.receipt_source_items?.length;
   const subtotal = usesSourceDetails ? doc.payment_summary.source_subtotal : doc.subtotal;
@@ -127,7 +127,7 @@ function summaryRows(doc) {
 
   const leftCellContent = isRC
     ? `<div class="rc-summary-left">
-        ${receiptPaymentDetails(doc)}
+        ${receiptPaymentDetails(doc, dateMode)}
         <div class="baht-text-main">(${thaiBahtText(rcBahtAmount)})</div>
        </div>`
     : `(${thaiBahtText(doc.net_total)})`;
@@ -147,7 +147,7 @@ function paymentBox(doc) {
   return bank ? `<section class="payment-box"><strong>รายละเอียดการชำระเงิน</strong><div>${escapeHtml(bank).replaceAll('\n', '<br>')}</div></section>` : '';
 }
 
-function receiptPaymentDetails(doc) {
+function receiptPaymentDetails(doc, dateMode = 'show') {
   if (doc.document_type !== 'RC') return '';
   const paymentTypeLabels = {
     DEPOSIT: 'มัดจำ',
@@ -164,7 +164,11 @@ function receiptPaymentDetails(doc) {
     details.push(`<div><strong>อ้างอิง:</strong> ${escapeHtml(doc.payment_summary.source_number)}</div>`);
   }
   details.push(`<div><strong>ช่องทาง:</strong> ${paymentMethodLabels[paymentMethod] || 'โอนเข้าบัญชี'} (${paymentTypeLabels[paymentType] || 'รับชำระ'})</div>`);
-  details.push(`<div><strong>วันที่รับชำระ:</strong> ${dateThai(doc.payment_received_date || doc.document_date)}</div>`);
+  if (dateMode === 'show') {
+    details.push(`<div><strong>วันที่รับชำระ:</strong> ${dateThai(doc.payment_received_date || doc.document_date)}</div>`);
+  } else if (dateMode === 'dots') {
+    details.push('<div><strong>วันที่รับชำระ:</strong> ........................................</div>');
+  }
   if (doc.installment_number && doc.installment_count) {
     details.push(`<div><strong>งวดที่:</strong> ${Number(doc.installment_number)}/${Number(doc.installment_count)}</div>`);
   }
@@ -172,7 +176,11 @@ function receiptPaymentDetails(doc) {
     details.push(`<div><strong>หนังสือหัก ณ ที่จ่าย:</strong> ${escapeHtml(doc.withholding_certificate_number)}</div>`);
   }
   if (doc.withholding_certificate_date) {
-    details.push(`<div><strong>วันที่หนังสือรับรอง:</strong> ${dateThai(doc.withholding_certificate_date)}</div>`);
+    if (dateMode === 'show') {
+      details.push(`<div><strong>วันที่หนังสือรับรอง:</strong> ${dateThai(doc.withholding_certificate_date)}</div>`);
+    } else if (dateMode === 'dots') {
+      details.push('<div><strong>วันที่หนังสือรับรอง:</strong> ........................................</div>');
+    }
   }
 
   return `<div class="rc-payment-info">${details.join('')}</div>`;
@@ -295,7 +303,7 @@ function table(rows, footer = '') {
     <tbody>${rows}</tbody>${footer ? `<tfoot>${footer}</tfoot>` : ''}</table>`;
 }
 
-function finalBlocks(doc) {
+function finalBlocks(doc, dateMode = 'show') {
   // ระยะเวลาราคายืนเป็นเงื่อนไขของใบเสนอราคาเท่านั้น ไม่ส่งต่อไปแสดงในเอกสารปลายทาง
   const quotationValidity = doc.document_type === 'QT' && doc.quotation_validity_days != null
     ? `<div>ราคานี้ยืนได้ ${doc.quotation_validity_days} วัน</div>`
@@ -305,7 +313,7 @@ function finalBlocks(doc) {
   if (doc.document_type === 'RC') {
     return `${terms}${signatures(doc)}`;
   }
-  return `${terms}${paymentBox(doc)}${receiptPaymentDetails(doc)}${signatures(doc)}`;
+  return `${terms}${paymentBox(doc)}${receiptPaymentDetails(doc, dateMode)}${signatures(doc)}`;
 }
 
 function renderPages(doc) {
@@ -324,8 +332,8 @@ function renderPages(doc) {
     sequence = rendered.sequence;
     return `<section class="a4-sheet" data-document-type="${doc.document_type}">
       ${statusWatermark(doc)}${header(doc, pageNumber, dateMode)}${pageNumber === 1 ? customerBlock(doc, dateMode) : ''}
-      ${table(rendered.html, isLast ? summaryRows(doc) : '')}
-      ${isLast ? finalBlocks(doc) : ''}
+      ${table(rendered.html, isLast ? summaryRows(doc, dateMode) : '')}
+      ${isLast ? finalBlocks(doc, dateMode) : ''}
       <div class="page-number">หน้า ${pageNumber}/${totalPages}</div>
     </section>`;
   }).join('');

@@ -411,9 +411,20 @@ export async function buildExcelWorkbook(doc, options = {}) {
     const details = [];
     if (doc.payment_summary?.source_number) details.push(`อ้างอิง: ${doc.payment_summary.source_number}`);
     details.push(`ช่องทาง: ${paymentMethodLabels[paymentMethod] || 'โอนเข้าบัญชี'} (${paymentTypeLabels[paymentType] || 'รับชำระ'})`);
-    details.push(`วันที่รับชำระ: ${dateThai(doc.payment_received_date || doc.document_date)}`);
+    if (dateMode === 'show') {
+      details.push(`วันที่รับชำระ: ${dateThai(doc.payment_received_date || doc.document_date)}`);
+    } else if (dateMode === 'dots') {
+      details.push('วันที่รับชำระ: ........................................');
+    }
     if (doc.installment_number && doc.installment_count) details.push(`งวดที่: ${numeric(doc.installment_number)}/${numeric(doc.installment_count)}`);
     if (doc.withholding_certificate_number) details.push(`หนังสือหัก ณ ที่จ่าย: ${doc.withholding_certificate_number}`);
+    if (doc.withholding_certificate_date) {
+      if (dateMode === 'show') {
+        details.push(`วันที่หนังสือรับรอง: ${dateThai(doc.withholding_certificate_date)}`);
+      } else if (dateMode === 'dots') {
+        details.push('วันที่หนังสือรับรอง: ........................................');
+      }
+    }
 
     const rcBahtVal = (doc.payment_summary && numeric(doc.payment_summary.remaining_after) > 0)
       ? doc.payment_summary.remaining_after
