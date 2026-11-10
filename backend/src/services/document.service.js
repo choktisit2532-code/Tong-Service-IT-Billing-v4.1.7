@@ -270,32 +270,30 @@ function isFinancialOrStructureModified(body, current, dbItems) {
     }
     
     const bodyItems = body.items || [];
-    if (bodyItems.length !== dbItems.length) {
-        return { modified: true, reason: `items count mismatch: body=${bodyItems.length} db=${dbItems.length}` };
+    const bodyBillableItems = bodyItems.filter((item) => item.line_type === 'item');
+    const dbBillableItems = dbItems.filter((item) => item.line_type === 'item');
+
+    if (bodyBillableItems.length !== dbBillableItems.length) {
+        return { modified: true, reason: `billable items count mismatch: body=${bodyBillableItems.length} db=${dbBillableItems.length}` };
     }
     
-    for (let i = 0; i < bodyItems.length; i++) {
-        const b = bodyItems[i];
-        const d = dbItems[i];
-        if (b.line_type !== d.line_type) {
-            return { modified: true, reason: `item[${i}] line_type mismatch: body=${b.line_type} db=${d.line_type}` };
+    for (let i = 0; i < bodyBillableItems.length; i++) {
+        const b = bodyBillableItems[i];
+        const d = dbBillableItems[i];
+        if (b.item_type !== d.item_type) {
+            return { modified: true, reason: `item[${i}] item_type mismatch: body=${b.item_type} db=${d.item_type}` };
         }
-        if (b.line_type === 'item') {
-            if (b.item_type !== d.item_type) {
-                return { modified: true, reason: `item[${i}] item_type mismatch: body=${b.item_type} db=${d.item_type}` };
-            }
-            if (b.product_id && d.product_id && Number(b.product_id) !== Number(d.product_id)) {
-                return { modified: true, reason: `item[${i}] product_id mismatch: body=${b.product_id} db=${d.product_id}` };
-            }
-            if (Number(b.quantity || 0) !== Number(d.quantity || 0)) {
-                return { modified: true, reason: `item[${i}] quantity mismatch: body=${b.quantity} db=${d.quantity}` };
-            }
-            if (Number(b.unit_price || 0) !== Number(d.unit_price || 0)) {
-                return { modified: true, reason: `item[${i}] unit_price mismatch: body=${b.unit_price} db=${d.unit_price}` };
-            }
-            if (String(b.unit || '') !== String(d.unit || '')) {
-                return { modified: true, reason: `item[${i}] unit mismatch: body=${b.unit} db=${d.unit}` };
-            }
+        if (b.product_id && d.product_id && Number(b.product_id) !== Number(d.product_id)) {
+            return { modified: true, reason: `item[${i}] product_id mismatch: body=${b.product_id} db=${d.product_id}` };
+        }
+        if (Number(b.quantity || 0) !== Number(d.quantity || 0)) {
+            return { modified: true, reason: `item[${i}] quantity mismatch: body=${b.quantity} db=${d.quantity}` };
+        }
+        if (Number(b.unit_price || 0) !== Number(d.unit_price || 0)) {
+            return { modified: true, reason: `item[${i}] unit_price mismatch: body=${b.unit_price} db=${d.unit_price}` };
+        }
+        if (String(b.unit || '') !== String(d.unit || '')) {
+            return { modified: true, reason: `item[${i}] unit mismatch: body=${b.unit} db=${d.unit}` };
         }
         if (String(b.description || '').trim() !== String(d.description || '').trim()) {
             return { modified: true, reason: `item[${i}] description mismatch: body='${b.description}' db='${d.description}'` };
@@ -1038,7 +1036,7 @@ async function updateDocument({ id, body, userId, role }) {
         }
 
         if (!isNormalEditable || hasActiveDependents) {
-            if (!isSafeOnly) {
+            if (!isSafeOnly && role !== 'admin') {
                 if (!isNormalEditable) {
                     throw new AppError(403, `สถานะเอกสารหรือสิทธิ์ผู้ใช้ไม่อนุญาตให้แก้ไขข้อมูลหลัก (${checkResult.reason})`, 'DOCUMENT_EDIT_NOT_ALLOWED');
                 } else {

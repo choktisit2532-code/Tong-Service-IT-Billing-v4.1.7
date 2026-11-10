@@ -1,6 +1,6 @@
 const EDITABLE_BY_ROLE = {
-    admin: new Set(['DRAFT', 'PENDING', 'APPROVED', 'IN_PROGRESS', 'OVERDUE']),
-    staff: new Set(['DRAFT', 'PENDING', 'APPROVED', 'IN_PROGRESS']),
+    admin: new Set(['DRAFT', 'PENDING', 'APPROVED', 'IN_PROGRESS', 'OVERDUE', 'PAID']),
+    staff: new Set(['DRAFT', 'PENDING', 'APPROVED', 'IN_PROGRESS', 'OVERDUE', 'PAID']),
     viewer: new Set()
 };
 

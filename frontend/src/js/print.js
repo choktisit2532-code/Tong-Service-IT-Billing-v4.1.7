@@ -57,6 +57,19 @@ excelButton.addEventListener('click', async () => {
   }
 });
 
+const editDocButton = document.getElementById('edit-doc-button');
+if (editDocButton) {
+  editDocButton.addEventListener('click', () => {
+    if (!currentDocument?.id) return;
+    if (window.opener && !window.opener.closed && typeof window.opener.openDocumentModal === 'function') {
+      window.opener.openDocumentModal(currentDocument.id).catch(console.error);
+      window.opener.focus();
+    } else {
+      window.location.href = `./app.html?edit=${currentDocument.id}`;
+    }
+  });
+}
+
 function receiptAmountLabel(doc) {
   if (doc.installment_number) {
     return doc.installment_count

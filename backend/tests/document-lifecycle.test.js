@@ -22,8 +22,9 @@ test('admin can edit and cancel in-progress documents', () => {
     assert.equal(canCancelDocument('admin', 'IN_PROGRESS'), true);
 });
 
-test('paid documents cannot be edited, cancelled or deleted', () => {
-    assert.equal(canEditDocument('admin', 'PAID'), false);
+test('paid documents can be edited by admin and staff, but cannot be cancelled or deleted', () => {
+    assert.equal(canEditDocument('admin', 'PAID'), true);
+    assert.equal(canEditDocument('staff', 'PAID'), true);
     assert.equal(canCancelDocument('admin', 'PAID'), false);
     assert.equal(canSoftDeleteDocument('admin', 'PAID'), false);
 });

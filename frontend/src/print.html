@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>พิมพ์เอกสาร</title>
   <link rel="icon" type="image/svg+xml" href="./assets/logo-placeholder.svg">
-  <link rel="stylesheet" href="./css/print.css?v=4.1.29">
+  <link rel="stylesheet" href="./css/print.css?v=4.1.30">
 </head>
 <body>
   <div class="print-toolbar">
@@ -14,12 +14,13 @@
     <label>การแสดงวันที่ <select id="print-date-select"><option value="show">แสดงวันที่ปกติ</option><option value="hide">ไม่แสดงวันที่</option><option value="dots">แสดงเป็นเส้นประ (........)</option></select></label>
     <button id="excel-button" class="excel-button" type="button">ส่งออก Excel สำหรับแก้ไข</button>
     <button id="print-button" type="button">พิมพ์ / บันทึก PDF</button>
+    <button id="edit-doc-button" class="edit-button" type="button">แก้ไขเอกสาร</button>
     <button onclick="window.close()">ปิด</button>
   </div>
   <aside id="page-warning" class="page-warning hidden"></aside>
   <main id="print-document" class="page-stack"><section class="a4-sheet"><p>กำลังโหลดเอกสาร...</p></section></main>
   <script src="./config.js"></script>
   <script src="./vendor/exceljs.min.js"></script>
-  <script type="module" src="./js/print.js?v=4.1.29"></script>
+  <script type="module" src="./js/print.js?v=4.1.30"></script>
 </body>
 </html>

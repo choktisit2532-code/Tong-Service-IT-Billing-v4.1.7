@@ -801,8 +801,11 @@ function documentCapabilities(documentRow) {
   const status = documentRow.status;
   const deleted = Boolean(documentRow.deleted_at);
   return {
-    canEdit: !deleted && ((role === 'admin' && ['DRAFT','PENDING','APPROVED','IN_PROGRESS','OVERDUE'].includes(status)) || (role === 'staff' && ['DRAFT','PENDING','APPROVED','IN_PROGRESS'].includes(status))),
-    canEditMetadata: !deleted && role === 'admin' && ['PAID','CANCELLED','REJECTED'].includes(status),
+    canEdit: !deleted && (
+      (role === 'admin' && ['DRAFT','PENDING','APPROVED','IN_PROGRESS','OVERDUE','PAID'].includes(status))
+      || (role === 'staff' && ['DRAFT','PENDING','APPROVED','IN_PROGRESS','OVERDUE','PAID'].includes(status))
+    ),
+    canEditMetadata: !deleted && role === 'admin' && ['CANCELLED','REJECTED'].includes(status),
     canCancel: !deleted && ((role === 'admin' && ['DRAFT','PENDING','APPROVED','IN_PROGRESS','REJECTED','OVERDUE','PAID'].includes(status)) || (role === 'staff' && ['DRAFT','PENDING','APPROVED','IN_PROGRESS'].includes(status))),
     canDelete: !deleted && ((role === 'admin' && ['DRAFT','PENDING','APPROVED','IN_PROGRESS','REJECTED','OVERDUE','PAID','CANCELLED'].includes(status)) || (role === 'staff' && ['DRAFT','PENDING'].includes(status))),
     canRestore: deleted && role === 'admin',
@@ -1673,7 +1676,7 @@ $$('[data-doc-type-card]').forEach((card) => card.addEventListener('click', () =
   selectDocumentType(card.dataset.docTypeCard).catch(showGlobalError);
 }));
 
-function addDocumentLine(lineType = 'item', data = {}) {
+function addDocumentLine(lineType = 'item', data = {}, insertAfterRow = null) {
   const row = document.createElement('div');
   row.className = `document-line ${lineType}-line`;
   row.dataset.lineType = lineType;
@@ -1688,15 +1691,59 @@ function addDocumentLine(lineType = 'item', data = {}) {
       <label class="mini-field"><span>หน่วย</span><input class="line-unit" value="${escapeHtml(data.unit || 'งาน')}"></label>
       <label class="mini-field"><span>ราคา/หน่วย</span><input class="line-price" type="number" min="0" step="0.01" value="${data.unit_price || 0}"></label>
       <div class="line-total"><span>รวม</span><strong>฿0.00</strong></div>
-      <button class="remove-line" type="button" aria-label="ลบรายการ"><i data-lucide="trash-2"></i></button>`;
+      <div class="line-row-actions">
+        <div class="insert-line-dropdown">
+          <button class="insert-line-btn" type="button" aria-label="แทรกรายการต่อจากนี้" title="แทรกรายการต่อจากนี้"><i data-lucide="plus"></i></button>
+          <div class="insert-line-menu hidden">
+            <button type="button" class="insert-line-option" data-insert="item"><i data-lucide="plus"></i> สินค้า/บริการ</button>
+            <button type="button" class="insert-line-option" data-insert="section"><i data-lucide="heading"></i> หัวข้อกลุ่ม</button>
+            <button type="button" class="insert-line-option" data-insert="note"><i data-lucide="file-text"></i> หมายเหตุในรายการ</button>
+          </div>
+        </div>
+        <button class="remove-line" type="button" aria-label="ลบรายการ" title="ลบรายการ"><i data-lucide="trash-2"></i></button>
+      </div>`;
     $('.line-item-type', row).value = data.item_type || 'service';
   } else {
     row.innerHTML = `
       <div class="line-kind"><div class="line-order-controls"><label class="line-position-label"><span>ลำดับ</span><input class="line-position" type="number" min="1" step="1" inputmode="numeric" aria-label="ย้ายไปลำดับที่"></label><button class="move-line-up" type="button" aria-label="เลื่อนรายการขึ้น" title="เลื่อนขึ้น"><i data-lucide="arrow-up"></i></button><button class="move-line-down" type="button" aria-label="เลื่อนรายการลง" title="เลื่อนลง"><i data-lucide="arrow-down"></i></button><button class="drag-handle" type="button" aria-label="กดค้างแล้วลากเพื่อเรียงรายการ" title="กดค้างแล้วลากเพื่อเรียงรายการ"><i data-lucide="grip-vertical"></i></button></div><select class="line-type"><option value="${lineType}">${lineType === 'section' ? 'หัวข้อ' : 'หมายเหตุ'}</option><option value="item">คิดเงิน</option><option value="${lineType === 'section' ? 'note' : 'section'}">${lineType === 'section' ? 'หมายเหตุ' : 'หัวข้อ'}</option></select></div>
       <div class="line-main line-main-wide"><input class="line-description" placeholder="${lineType === 'section' ? 'ชื่อหัวข้อ เช่น งานติดตั้งสำนักงาน' : 'ข้อความหมายเหตุ'}" value="${escapeHtml(data.description || '')}"></div>
       <select class="line-style"><option value="${lineType === 'section' ? 'bold' : 'normal'}">${lineType === 'section' ? 'ตัวหนา' : 'ปกติ'}</option><option value="warning">ข้อความเตือน</option><option value="bold">ตัวหนา</option></select>
-      <button class="remove-line" type="button" aria-label="ลบ"><i data-lucide="trash-2"></i></button>`;
+      <div class="line-row-actions">
+        <div class="insert-line-dropdown">
+          <button class="insert-line-btn" type="button" aria-label="แทรกรายการต่อจากนี้" title="แทรกรายการต่อจากนี้"><i data-lucide="plus"></i></button>
+          <div class="insert-line-menu hidden">
+            <button type="button" class="insert-line-option" data-insert="item"><i data-lucide="plus"></i> สินค้า/บริการ</button>
+            <button type="button" class="insert-line-option" data-insert="section"><i data-lucide="heading"></i> หัวข้อกลุ่ม</button>
+            <button type="button" class="insert-line-option" data-insert="note"><i data-lucide="file-text"></i> หมายเหตุในรายการ</button>
+          </div>
+        </div>
+        <button class="remove-line" type="button" aria-label="ลบ" title="ลบ"><i data-lucide="trash-2"></i></button>
+      </div>`;
     $('.line-style', row).value = data.text_style || (lineType === 'section' ? 'bold' : 'normal');
+  }
+
+  const insertBtn = $('.insert-line-btn', row);
+  const insertMenu = $('.insert-line-menu', row);
+  if (insertBtn && insertMenu) {
+    insertBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const wasHidden = insertMenu.classList.contains('hidden');
+      $$('.insert-line-menu').forEach((menu) => menu.classList.add('hidden'));
+      if (wasHidden) {
+        insertMenu.classList.remove('hidden');
+      }
+    });
+
+    $$('.insert-line-option', insertMenu).forEach((optionBtn) => {
+      optionBtn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        insertMenu.classList.add('hidden');
+        clearDocumentItemOrderUndo();
+        const insertType = optionBtn.dataset.insert || 'item';
+        addDocumentLine(insertType, {}, row);
+        showToast(insertType === 'section' ? 'แทรกหัวข้อกลุ่มแล้ว' : insertType === 'note' ? 'แทรกหมายเหตุในรายการแล้ว' : 'แทรกรายการแล้ว');
+      });
+    });
   }
 
   $('.remove-line', row).addEventListener('click', () => {
@@ -1709,8 +1756,13 @@ function addDocumentLine(lineType = 'item', data = {}) {
   $('.line-type', row)?.addEventListener('change', (event) => {
     const replacementType = event.target.value;
     const description = $('.line-description', row)?.value || '';
+    const prevSibling = row.previousElementSibling;
     row.remove();
-    addDocumentLine(replacementType, { description });
+    if (prevSibling && prevSibling.parentNode === $('#document-items')) {
+      addDocumentLine(replacementType, { description }, prevSibling);
+    } else {
+      addDocumentLine(replacementType, { description });
+    }
   });
   $$('input,select', row).forEach((input) => input.addEventListener('input', updateDocumentPreview));
   if (lineType === 'item') {
@@ -1791,11 +1843,19 @@ function addDocumentLine(lineType = 'item', data = {}) {
     refreshDocumentLineOrderControls();
     updateDocumentPreview();
   });
-  $('#document-items').appendChild(row);
+  if (insertAfterRow && insertAfterRow.parentNode === $('#document-items')) {
+    insertAfterRow.after(row);
+  } else {
+    $('#document-items').appendChild(row);
+  }
   configureDocumentLineDrag(row);
   refreshDocumentLineOrderControls();
   updateDocumentPreview();
   refreshIcons();
+  if (insertAfterRow) {
+    const desc = $('.line-description', row);
+    if (desc) desc.focus();
+  }
 }
 
 let activeDocumentLineDrag = null;
@@ -1833,6 +1893,10 @@ function refreshDocumentLineOrderControls() {
     const down = $('.move-line-down', row);
     if (up) up.disabled = state.editingMetadataOnly || index === 0;
     if (down) down.disabled = state.editingMetadataOnly || index === lines.length - 1;
+    const insertBtn = $('.insert-line-btn', row);
+    if (insertBtn) insertBtn.disabled = state.editingMetadataOnly;
+    const removeBtn = $('.remove-line', row);
+    if (removeBtn) removeBtn.disabled = state.editingMetadataOnly;
     configureDocumentLineDrag(row);
   });
 }
@@ -1915,6 +1979,11 @@ $('#document-items').addEventListener('dragover', (event) => {
 document.addEventListener('pointerup', () => resetDocumentLineDrag());
 document.addEventListener('pointercancel', () => resetDocumentLineDrag());
 window.addEventListener('blur', () => resetDocumentLineDrag());
+document.addEventListener('click', (event) => {
+  if (!event.target.closest('.insert-line-dropdown')) {
+    $$('.insert-line-menu').forEach((menu) => menu.classList.add('hidden'));
+  }
+});
 
 $('#undo-item-order').addEventListener('click', undoDocumentItemOrder);
 $('#add-item').addEventListener('click', () => { clearDocumentItemOrderUndo(); addDocumentLine('item'); });
@@ -3094,8 +3163,16 @@ document.addEventListener('keydown', (event) => {
   }
 });
 
+window.openDocumentModal = openDocumentModal;
 refreshIcons();
-loadInitialData().catch((error) => {
+loadInitialData().then(() => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const editId = urlParams.get('edit');
+  if (editId) {
+    openDocumentModal(Number(editId)).catch(showGlobalError);
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+}).catch((error) => {
   if (error.status === 401) { clearToken(); location.replace('./index.html'); }
   else showGlobalError(error);
 });
