@@ -585,37 +585,54 @@ function canvasToA4Section(canvas, pageLabel) {
   return section;
 }
 
-/** ลบหน้าแนบเก่าออก แล้ว render ใหม่ตามที่ติ๊ก */
+let attachRenderToken = 0;
+
+/** ลบหน้าแนบเก่าออก แล้ว render ใหม่ตามที่ติ๊ก (ป้องกัน Race Condition และจำกัดทะเบียนพาณิชย์ 1 แผ่น) */
 async function renderAttachPages() {
-  // ลบหน้าแนบเก่า
-  root.querySelectorAll('.a4-sheet--attach').forEach((el) => el.remove());
+  const currentToken = ++attachRenderToken;
   if (!window.pdfjsLib) return;
 
   const checked = ['id-card','commercial-reg','sme-gp'].filter((type) => {
     const cb = document.getElementById(`attach-cb-${type}`);
     return cb && cb.checked && !cb.disabled;
   });
-  if (checked.length === 0) return;
 
-  // โหลดและ render ทีละไฟล์
+  if (checked.length === 0) {
+    root.querySelectorAll('.a4-sheet--attach').forEach((el) => el.remove());
+    return;
+  }
+
+  const newSections = [];
+
+  // โหลดและ render ทีละไฟล์เข้า buffer ในหน่วยความจำก่อน
   for (const type of checked) {
+    if (currentToken !== attachRenderToken) return; // ยกเลิกหากมีการเรียกซ้ำใหม่
     try {
       const { data: base64 } = await request(`/settings/attachment/${type}`);
-      if (!base64) continue;
+      if (!base64 || currentToken !== attachRenderToken) continue;
 
       const bytes   = base64ToUint8Array(base64);
       const pdfDoc  = await pdfjsLib.getDocument({ data: bytes }).promise;
-      const totalPg = pdfDoc.numPages;
+
+      // ใบทะเบียนพาณิชย์ และบัตรประชาชน กำหนดให้แสดงเพียง 1 แผ่นถ้วน
+      const maxPages = (type === 'commercial-reg' || type === 'id-card') ? 1 : pdfDoc.numPages;
+      const totalPg  = Math.min(pdfDoc.numPages, maxPages);
 
       for (let pg = 1; pg <= totalPg; pg++) {
+        if (currentToken !== attachRenderToken) return;
         const canvas  = await renderPdfPageToCanvas(pdfDoc, pg, type);
-        const section = canvasToA4Section(canvas,
-          totalPg > 1 ? `(เอกสารแนบ หน้า ${pg}/${totalPg})` : null
-        );
-        root.appendChild(section);
+        const section = canvasToA4Section(canvas, null);
+        newSections.push(section);
       }
     } catch (err) {
       console.error(`renderAttachPages [${type}]:`, err);
     }
   }
+
+  // หากมีการเรียกใหม่ระหว่างรอ ให้ข้ามไป
+  if (currentToken !== attachRenderToken) return;
+
+  // นำหน้าแนบชุดใหม่ไปต่อท้ายหน้าใบเสนอราคาเพียงรอบเดียวจบ
+  root.querySelectorAll('.a4-sheet--attach').forEach((el) => el.remove());
+  newSections.forEach((sec) => root.appendChild(sec));
 }
