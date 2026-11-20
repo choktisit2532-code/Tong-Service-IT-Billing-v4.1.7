@@ -533,17 +533,17 @@ async function renderPdfPageToCanvas(pdfDoc, pageNum, attachType) {
     ctx.restore();
   }
 
-  // ---- overlay: "สำเนาถูกต้อง" + เส้นประสำหรับเขียนชื่อ (ทุกเอกสาร — มุมล่างขวา) ----
+  // ---- overlay: "สำเนาถูกต้อง" + เส้นประสำหรับเขียนชื่อ (ย้ายมามุมล่างซ้าย เพื่อไม่ทับตราประทับ/ลายเซ็น/QR Code) ----
   const cW2   = scaledVP.width;
   const cH2   = scaledVP.height;
   const fSize = Math.round(cW2 * 0.032);  // ขนาดตัวอักษร
 
   ctx.save();
-  // กล่องพื้นหลังขาวโปร่งเพื่อความคมชัด
-  const boxW  = cW2 * 0.36;
-  const boxH  = fSize * 3.2;
-  const boxX  = cW2 - boxW - cW2 * 0.04;
-  const boxY  = cH2 - boxH - cH2 * 0.04;
+  // กล่องพื้นหลังขาวโปร่งเพื่อความคมชัด (มุมล่างซ้าย)
+  const boxW  = cW2 * 0.38;
+  const boxH  = fSize * 3.8;
+  const boxX  = cW2 * 0.08;
+  const boxY  = cH2 - boxH - cH2 * 0.035;
   ctx.fillStyle = 'rgba(255,255,255,0.92)';
   ctx.fillRect(boxX, boxY, boxW, boxH);
 
@@ -555,14 +555,14 @@ async function renderPdfPageToCanvas(pdfDoc, pageNum, attachType) {
   const cx = boxX + boxW / 2;
   ctx.fillText('สำเนาถูกต้อง', cx, boxY + fSize * 0.2);
 
-  // เส้นประสำหรับเซ็นชื่อกำกับด้วยลายมือ (ไม่มีข้อความอื่นมารบกวน)
+  // เส้นประสำหรับเซ็นชื่อกำกับด้วยลายมือ (ขยับลงมาด้านล่าง ให้มีระยะเขียนพอดี)
   ctx.strokeStyle = '#222';
   ctx.lineWidth   = 1.2;
   ctx.setLineDash([4, 4]);
-  const lineY = boxY + fSize * 2.0;
+  const lineY = boxY + fSize * 2.6;
   ctx.beginPath();
-  ctx.moveTo(boxX + boxW * 0.08, lineY);
-  ctx.lineTo(boxX + boxW * 0.92, lineY);
+  ctx.moveTo(boxX + boxW * 0.05, lineY);
+  ctx.lineTo(boxX + boxW * 0.95, lineY);
   ctx.stroke();
 
   ctx.restore();
