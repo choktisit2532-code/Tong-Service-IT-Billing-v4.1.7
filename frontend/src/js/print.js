@@ -481,84 +481,89 @@ async function renderPdfPageToCanvas(pdfDoc, pageNum, attachType) {
 
   await page.render({ canvasContext: ctx, viewport: scaledVP }).promise;
 
-  // ---- overlay: เส้นทะแยงสีน้ำเงิน (เฉพาะบัตรประชาชน — พาดบนพื้นที่บัตรเท่านั้น) ----
+  // ---- overlay: เส้นทะแยงสีน้ำเงิน (เฉพาะบัตรประชาชน — พาดบนตัวบัตรเท่านั้น) ----
   if (attachType === 'id-card') {
-    // สมมติบัตรอยู่ตรงกลางหน้า A4 — วัดพื้นที่บัตรแบบ proportional
-    // บัตรประชาชน ID85 ขนาด 85.6×54 mm; บน A4 (210×297 mm) → ประมาณ 40% ของความกว้าง
-    const cW   = scaledVP.width;
-    const cH   = scaledVP.height;
+    const cW = scaledVP.width;
+    const cH = scaledVP.height;
 
-    // พื้นที่บัตร (ตรงกลาง, ประมาณ 55% ความกว้าง, 25% ความสูง จากตำแหน่ง 15% ของหน้า)
-    const cardX = cW * 0.09;
-    const cardY = cH * 0.11;
-    const cardW = cW * 0.82;
-    const cardH = cH * 0.35;
+    // ขอบเขตตำแหน่งของบัตรประชาชนบนหน้าสแกน (ตรงกลางหน้า)
+    const cardX = cW * 0.28;
+    const cardY = cH * 0.35;
+    const cardW = cW * 0.53;
+    const cardH = cH * 0.29;
 
     ctx.save();
     ctx.beginPath();
     ctx.rect(cardX, cardY, cardW, cardH);
-    ctx.clip(); // จำกัดการวาดภายในพื้นที่บัตรเท่านั้น
+    ctx.clip(); // บังคับให้อยู่บนตัวบัตรเท่านั้น ไม่ล้นออกไปบนกระดาษสีขาว
 
-    // วาดเส้นทะแยงหลายเส้น (diagonal lines)
-    ctx.strokeStyle = 'rgba(0, 80, 200, 0.18)';
-    ctx.lineWidth   = 1.5;
-    const step = 28;
-    for (let offset = -cardH; offset < cardW + cardH; offset += step) {
-      ctx.beginPath();
-      ctx.moveTo(cardX + offset, cardY);
-      ctx.lineTo(cardX + offset - cardH, cardY + cardH);
-      ctx.stroke();
-    }
+    // กึ่งกลางบัตร
+    const midX = cardX + cardW * 0.5;
+    const midY = cardY + cardH * 0.5;
+    const angle = -0.38; // มุมเอียงประมาณ -22 องศา (พาดจากซ้ายล่างขึ้นขวาบน)
+    const lineSpacing = cW * 0.042; // ระยะห่างระหว่างเส้นขีดคร่อมคู่ 2 เส้น
 
-    // ข้อความกำกับ (ทะแยงกลาง)
-    const textX = cardX + cardW / 2;
-    const textY = cardY + cardH / 2;
-    ctx.translate(textX, textY);
-    ctx.rotate(-Math.atan2(cardH, cardW)); // มุมเดียวกับเส้นทะแยง
-    ctx.font      = `bold ${Math.round(cW * 0.022)}px 'Sarabun', sans-serif`;
-    ctx.fillStyle = 'rgba(0, 60, 180, 0.72)';
-    ctx.textAlign = 'center';
+    ctx.translate(midX, midY);
+    ctx.rotate(angle);
+
+    // เส้นขีดคร่อมคู่ (2 เส้นขนานสีน้ำเงิน)
+    ctx.strokeStyle = '#0044cc';
+    ctx.lineWidth   = 2;
+    const lineLen   = cardW * 1.5;
+
+    // เส้นบน
+    ctx.beginPath();
+    ctx.moveTo(-lineLen / 2, -lineSpacing / 2);
+    ctx.lineTo( lineLen / 2, -lineSpacing / 2);
+    ctx.stroke();
+
+    // เส้นล่าง
+    ctx.beginPath();
+    ctx.moveTo(-lineLen / 2, lineSpacing / 2);
+    ctx.lineTo( lineLen / 2, lineSpacing / 2);
+    ctx.stroke();
+
+    // ข้อความกำกับตรงกลางระหว่าง 2 เส้น
+    ctx.font         = `bold ${Math.round(cW * 0.020)}px 'Sarabun', sans-serif`;
+    ctx.fillStyle    = '#0033aa';
+    ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('ใช้สำหรับการออกใบเสนอราคา', 0, -Math.round(cW * 0.013));
-    ctx.fillText('กับทางราชการเท่านั้น', 0, Math.round(cW * 0.013));
+    ctx.fillText('ใช้สำหรับการออกใบเสนอราคากับทางราชการเท่านั้น', 0, 0);
+
     ctx.restore();
   }
 
-  // ---- overlay: "สำเนาถูกต้อง" + เส้นประ (ทุกเอกสาร — มุมล่างขวา) ----
+  // ---- overlay: "สำเนาถูกต้อง" + เส้นประสำหรับเขียนชื่อ (ทุกเอกสาร — มุมล่างขวา) ----
   const cW2   = scaledVP.width;
   const cH2   = scaledVP.height;
-  const fSize = Math.round(cW2 * 0.032);  // ขนาดตัวอักษรสัดส่วน
+  const fSize = Math.round(cW2 * 0.032);  // ขนาดตัวอักษร
 
   ctx.save();
-  // กล่องพื้นหลังขาวโปร่ง
+  // กล่องพื้นหลังขาวโปร่งเพื่อความคมชัด
   const boxW  = cW2 * 0.36;
-  const boxH  = fSize * 4.2;
+  const boxH  = fSize * 3.2;
   const boxX  = cW2 - boxW - cW2 * 0.04;
   const boxY  = cH2 - boxH - cH2 * 0.04;
-  ctx.fillStyle = 'rgba(255,255,255,0.88)';
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
   ctx.fillRect(boxX, boxY, boxW, boxH);
 
+  // คำว่า "สำเนาถูกต้อง"
   ctx.font      = `bold ${fSize}px 'Sarabun', sans-serif`;
   ctx.fillStyle = '#111';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   const cx = boxX + boxW / 2;
-  ctx.fillText('สำเนาถูกต้อง', cx, boxY + fSize * 0.3);
+  ctx.fillText('สำเนาถูกต้อง', cx, boxY + fSize * 0.2);
 
-  // เส้นประสำหรับเขียนชื่อ
-  ctx.strokeStyle = '#333';
-  ctx.lineWidth   = 1;
-  ctx.setLineDash([4, 3]);
-  const lineY = boxY + fSize * 1.9;
+  // เส้นประสำหรับเซ็นชื่อกำกับด้วยลายมือ (ไม่มีข้อความอื่นมารบกวน)
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth   = 1.2;
+  ctx.setLineDash([4, 4]);
+  const lineY = boxY + fSize * 2.0;
   ctx.beginPath();
-  ctx.moveTo(boxX + boxW * 0.06, lineY);
-  ctx.lineTo(boxX + boxW * 0.94, lineY);
+  ctx.moveTo(boxX + boxW * 0.08, lineY);
+  ctx.lineTo(boxX + boxW * 0.92, lineY);
   ctx.stroke();
-
-  ctx.font         = `${Math.round(fSize * 0.72)}px 'Sarabun', sans-serif`;
-  ctx.fillStyle    = '#555';
-  ctx.setLineDash([]);
-  ctx.fillText('(ลงชื่อ-นามสกุล)', cx, lineY + fSize * 0.25);
 
   ctx.restore();
 
