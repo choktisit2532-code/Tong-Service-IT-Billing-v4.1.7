@@ -378,6 +378,7 @@ async function runWithBusy(button, task, busyText = 'กำลังโหลด
 const viewMeta = {
   dashboard: ['แดชบอร์ดควบคุม', 'ภาพรวมรายได้ เอกสาร และงานค้าง'],
   documents: ['คลังเอกสาร', 'จัดการใบเสนอราคา ใบแจ้งหนี้ ใบวางบิล ใบเสร็จ และใบส่งของ / ใบส่งมอบงาน'],
+  repairs: ['งานรับซ่อม', 'บันทึกใบรับเครื่องซ่อม ติดตามสถานะ และหนังสือสัญญาความยินยอมส่งซ่อมต่อศูนย์เฉพาะทาง'],
   customers: ['รายชื่อลูกค้า', 'ข้อมูลลูกค้าและกฎการหัก ณ ที่จ่าย'],
   products: ['สินค้าและบริการ', 'คลังรายการมาตรฐาน ค่าแรง อะไหล่ และค่าใช้จ่าย'],
   reports: ['รายงานการเงิน', 'รายงานรายได้ ลูกหนี้ ภาษี ยอดขาย และเอกสารยกเลิก'],
@@ -386,7 +387,7 @@ const viewMeta = {
 };
 
 async function switchView(name) {
-  const requiredPermission = { dashboard:'dashboard.view', documents:'document.view', customers:'customer.view', products:'product.view', reports:'report.view', audit:'audit.view', settings:'settings.view' }[name];
+  const requiredPermission = { dashboard:'dashboard.view', documents:'document.view', repairs:'document.view', customers:'customer.view', products:'product.view', reports:'report.view', audit:'audit.view', settings:'settings.view' }[name];
   if (requiredPermission && !hasPermission(requiredPermission)) {
     showToast('คุณไม่มีสิทธิ์เปิดหน้านี้', 'warning');
     return;
@@ -404,6 +405,7 @@ async function switchView(name) {
     if (name === 'dashboard') await loadDashboard();
     if (name === 'dashboard') checkAttachExpiryForDashboard();
     if (name === 'documents') await loadDocuments();
+    if (name === 'repairs') await loadRepairs();
     if (name === 'customers') await loadCustomers();
     if (name === 'products') await loadProducts();
     if (name === 'reports') await loadReport();
@@ -1706,7 +1708,14 @@ function addDocumentLine(lineType = 'item', data = {}, insertAfterRow = null) {
   if (lineType === 'item') {
     row.innerHTML = `
       <div class="line-kind"><div class="line-order-controls"><label class="line-position-label"><span>ลำดับ</span><input class="line-position" type="number" min="1" step="1" inputmode="numeric" aria-label="ย้ายไปลำดับที่"></label><button class="move-line-up" type="button" aria-label="เลื่อนรายการขึ้น" title="เลื่อนขึ้น"><i data-lucide="arrow-up"></i></button><button class="move-line-down" type="button" aria-label="เลื่อนรายการลง" title="เลื่อนลง"><i data-lucide="arrow-down"></i></button><button class="drag-handle" type="button" aria-label="กดค้างแล้วลากเพื่อเรียงรายการ" title="กดค้างแล้วลากเพื่อเรียงรายการ"><i data-lucide="grip-vertical"></i></button></div><select class="line-item-type" aria-label="ประเภทรายการ"><option value="service">ค่าแรง</option><option value="product">สินค้า</option><option value="travel">เดินทาง</option><option value="other">อื่น ๆ</option></select></div>
-      <div class="line-main"><input class="line-description" list="product-master-list" placeholder="ค้นหาจากคลัง หรือพิมพ์รายละเอียดสินค้า/บริการ" value="${escapeHtml(data.description || '')}"><small>เลือกรายการเดิมเพื่อเติมหน่วยและราคาอัตโนมัติ</small></div>
+      <div class="line-main">
+        <input class="line-description" list="product-master-list" placeholder="ค้นหาจากคลัง หรือพิมพ์รายละเอียดสินค้า/บริการ" value="${escapeHtml(data.description || '')}">
+        <div class="line-meta-row" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:3px;">
+          <input class="line-serial" placeholder="S/N (ถ้ามี) เช่น SN89421..." value="${escapeHtml(data.serial_number || '')}" style="font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg);">
+          <input class="line-warranty" placeholder="ประกัน เช่น 1 ปี, 3 เดือน" value="${escapeHtml(data.warranty_period || '')}" style="font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg);">
+        </div>
+        <small>เลือกรายการเดิมเพื่อเติมหน่วยและราคาอัตโนมัติ</small>
+      </div>
       <label class="mini-field"><span>จำนวน</span><input class="line-quantity" type="number" min="0.01" step="0.01" value="${data.quantity || 1}"></label>
       <label class="mini-field"><span>หน่วย</span><input class="line-unit" value="${escapeHtml(data.unit || 'งาน')}"></label>
       <label class="mini-field"><span>ราคา/หน่วย</span><input class="line-price" type="number" min="0" step="0.01" value="${data.unit_price || 0}"></label>
@@ -2027,6 +2036,8 @@ function collectDocumentItems() {
       item_type: $('.line-item-type', row).value,
       product_id: row.dataset.productId ? Number(row.dataset.productId) : null,
       description: $('.line-description', row).value,
+      serial_number: $('.line-serial', row)?.value?.trim() || null,
+      warranty_period: $('.line-warranty', row)?.value?.trim() || null,
       quantity: $('.line-quantity', row).value,
       unit: $('.line-unit', row).value,
       unit_price: $('.line-price', row).value,
@@ -3536,3 +3547,341 @@ function initSettingsTabs() {
 }
 
 initSettingsTabs();
+
+// ============================================================
+// Repair Tickets & Subcontracting Consent (งานรับซ่อมและสัญญาส่งต่อ)
+// ============================================================
+
+const REPAIR_DEVICE_LABELS = {
+  notebook: 'โน้ตบุ๊ก',
+  pc: 'คอมพิวเตอร์ตั้งโต๊ะ',
+  'all-in-one': 'All-in-One PC',
+  macbook: 'MacBook / iMac',
+  printer: 'เครื่องพิมพ์',
+  monitor: 'จอภาพ',
+  other: 'อุปกรณ์อื่น ๆ'
+};
+
+const REPAIR_STATUS_LABELS = {
+  PENDING: { label: 'รอดำเนินการ', cls: 'badge-warning' },
+  SENT_OUT: { label: 'ส่งศูนย์เฉพาะทาง', cls: 'badge-warning', style: 'background:#fef3c7;color:#92400e;border:1px solid #fde68a;' },
+  IN_PROGRESS: { label: 'กำลังซ่อม', cls: 'badge-info', style: 'background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;' },
+  DONE: { label: 'ซ่อมเสร็จแล้ว', cls: 'badge-success', style: 'background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;' },
+  DELIVERED: { label: 'ส่งมอบแล้ว', cls: '', style: 'background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;' },
+  CANCELLED: { label: 'ยกเลิก', cls: 'badge-danger' }
+};
+
+async function populateRepairCustomerSelect(selectedId = null) {
+  if (!state.customers || !state.customers.length) {
+    try {
+      const res = await request('/customers?limit=200&page=1&status=active');
+      state.customers = res.data || [];
+    } catch { state.customers = []; }
+  }
+  const sel = $('#repair-customer-id');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">-- เลือกลูกค้า --</option>' + (state.customers || []).map((c) => {
+    const isSel = selectedId && String(c.id) === String(selectedId) ? 'selected' : '';
+    const code = c.code ? `[${c.code}] ` : '';
+    return `<option value="${c.id}" ${isSel}>${code}${escapeHtml(c.name)} (${c.phone || '-'})</option>`;
+  }).join('');
+}
+
+async function loadRepairs() {
+  const table = $('#repairs-table');
+  if (!table) return;
+  table.innerHTML = '<tr><td colspan="9" class="table-empty">กำลังโหลดข้อมูลงานรับซ่อม...</td></tr>';
+
+  const search = $('#repair-search')?.value?.trim() || '';
+  const status = $('#repair-status-filter')?.value || 'all';
+
+  try {
+    const res = await request(`/repairs?search=${encodeURIComponent(search)}&status=${encodeURIComponent(status)}&limit=100`);
+    const repairs = res.data || [];
+    state.repairs = repairs;
+
+    if (!repairs.length) {
+      table.innerHTML = '<tr><td colspan="9" class="table-empty">ไม่พบข้อมูลงานรับซ่อม</td></tr>';
+      return;
+    }
+
+    table.innerHTML = repairs.map((r) => {
+      const devLabel = REPAIR_DEVICE_LABELS[r.device_type] || r.device_type;
+      const subBadge = r.is_subcontract
+        ? '<span class="badge" style="background:#fffbeb;color:#b45309;border:1px solid #fde68a;font-size:11px;" title="ยินยอมส่งต่อศูนย์เฉพาะทาง">⚠️ ส่งศูนย์เฉพาะทาง</span>'
+        : '<span class="badge" style="background:#f1f5f9;color:#475569;font-size:11px;">ซ่อมในร้าน</span>';
+
+      return `<tr>
+        <td>
+          <div><strong style="color:var(--primary);cursor:pointer;" class="repair-print-link" data-repair-id="${r.id}" title="คลิกเพื่อพิมพ์ใบรับซ่อม">${escapeHtml(r.ticket_number)}</strong></div>
+          ${r.appointment_date ? `<div style="font-size:11px;color:var(--muted);">นัด: ${dateThai(r.appointment_date)}</div>` : ''}
+        </td>
+        <td>${dateThai(r.ticket_date)}</td>
+        <td>
+          <div><strong>${escapeHtml(r.customer_name || '-')}</strong></div>
+          <div style="font-size:12px;color:var(--muted);">${escapeHtml(r.customer_phone || '-')}</div>
+        </td>
+        <td>
+          <div><strong>${escapeHtml(devLabel)}</strong>: ${escapeHtml(r.brand_model)}</div>
+          ${r.serial_number ? `<div style="font-size:11px;color:var(--muted);">S/N: ${escapeHtml(r.serial_number)}</div>` : ''}
+        </td>
+        <td style="max-width:200px;white-space:normal;font-size:12px;" title="${escapeHtml(r.symptoms)}">
+          ${escapeHtml(r.symptoms)}
+        </td>
+        <td>${subBadge}</td>
+        <td>
+          <select class="repair-quick-status" data-repair-id="${r.id}" style="font-size:12px;padding:3px 6px;border-radius:6px;border:1px solid var(--border);">
+            <option value="PENDING" ${r.status==='PENDING'?'selected':''}>รอดำเนินการ</option>
+            <option value="SENT_OUT" ${r.status==='SENT_OUT'?'selected':''}>ส่งศูนย์เฉพาะทาง</option>
+            <option value="IN_PROGRESS" ${r.status==='IN_PROGRESS'?'selected':''}>กำลังซ่อม</option>
+            <option value="DONE" ${r.status==='DONE'?'selected':''}>ซ่อมเสร็จแล้ว</option>
+            <option value="DELIVERED" ${r.status==='DELIVERED'?'selected':''}>ส่งมอบแล้ว</option>
+            <option value="CANCELLED" ${r.status==='CANCELLED'?'selected':''}>ยกเลิก</option>
+          </select>
+        </td>
+        <td class="number">
+          <div>฿${number(r.estimated_cost || 0)}</div>
+          ${Number(r.deposit_amount) > 0 ? `<div style="font-size:11px;color:#16a34a;">มัดจำ: ฿${number(r.deposit_amount)}</div>` : ''}
+        </td>
+        <td>
+          <div class="button-group" style="gap:4px;">
+            <button class="btn btn-ghost btn-sm repair-btn-print" data-repair-id="${r.id}" title="พิมพ์ใบรับเครื่อง / สัญญาส่งต่อ" style="padding:4px 8px;">
+              <i data-lucide="printer"></i>
+            </button>
+            <button class="btn btn-ghost btn-sm repair-btn-edit" data-repair-id="${r.id}" title="แก้ไขข้อมูล" style="padding:4px 8px;">
+              <i data-lucide="edit"></i>
+            </button>
+            <button class="btn btn-ghost btn-sm repair-btn-convert" data-repair-id="${r.id}" title="เปิดบิลสร้างเอกสารเสนอราคา/แจ้งหนี้" style="padding:4px 8px;color:var(--primary);">
+              <i data-lucide="file-plus"></i>
+            </button>
+            ${hasRole('admin') ? `<button class="btn btn-ghost btn-sm repair-btn-del" data-repair-id="${r.id}" title="ลบใบรับซ่อม" style="padding:4px 8px;color:#ef4444;"><i data-lucide="trash-2"></i></button>` : ''}
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+
+    bindRepairTableEvents();
+    refreshIcons();
+  } catch (err) {
+    table.innerHTML = `<tr><td colspan="9" class="table-empty" style="color:#ef4444;">โหลดข้อมูลไม่สำเร็จ: ${escapeHtml(err.message)}</td></tr>`;
+  }
+}
+
+function bindRepairTableEvents() {
+  $$('.repair-print-link, .repair-btn-print').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      window.open(`./print.html?repair_id=${btn.dataset.repairId}`, '_blank', 'noopener');
+    });
+  });
+
+  $$('.repair-btn-edit').forEach((btn) => {
+    btn.addEventListener('click', () => openRepairModal(btn.dataset.repairId));
+  });
+
+  $$('.repair-btn-convert').forEach((btn) => {
+    btn.addEventListener('click', () => convertRepairToDocument(btn.dataset.repairId));
+  });
+
+  $$('.repair-btn-del').forEach((btn) => {
+    btn.addEventListener('click', () => deleteRepairTicket(btn.dataset.repairId));
+  });
+
+  $$('.repair-quick-status').forEach((sel) => {
+    sel.addEventListener('change', async (e) => {
+      const id = sel.dataset.repairId;
+      const newStatus = e.target.value;
+      try {
+        await request(`/repairs/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ status: newStatus })
+        });
+        showToast(`อัปเดตสถานะงานซ่อมเป็น "${REPAIR_STATUS_LABELS[newStatus]?.label || newStatus}" แล้ว`);
+        await loadRepairs();
+      } catch (err) {
+        showGlobalError(err);
+        await loadRepairs();
+      }
+    });
+  });
+}
+
+async function convertRepairToDocument(repairId) {
+  try {
+    const { data: ticket } = await request(`/repairs/${repairId}`);
+    if (!ticket) return;
+
+    await openDocumentModal();
+
+    if (ticket.customer_id) {
+      $('#doc-customer').value = String(ticket.customer_id);
+      syncSelectedCustomerSnapshot();
+    }
+
+    clearDocumentItemOrderUndo();
+    $('#document-items').innerHTML = '';
+
+    const devLabel = REPAIR_DEVICE_LABELS[ticket.device_type] || ticket.device_type;
+    addDocumentLine('item', {
+      item_type: 'service',
+      description: `ค่าบริการตรวจเช็ก/ซ่อมแซม ${devLabel} ยี่ห้อ/รุ่น ${ticket.brand_model}`,
+      serial_number: ticket.serial_number || '',
+      quantity: 1,
+      unit: 'งาน',
+      unit_price: Number(ticket.estimated_cost) || 0
+    });
+
+    if (ticket.symptoms) {
+      addDocumentLine('note', {
+        description: `อาการที่แจ้งซ่อม: ${ticket.symptoms}`
+      });
+    }
+
+    $('#doc-remarks').value = `อ้างอิงใบรับเครื่องซ่อมเลขที่ ${ticket.ticket_number}`;
+    updateDocumentPreview();
+    showToast('ดึงข้อมูลจากใบรับซ่อมเข้าสู่แบบฟอร์มเอกสารเรียบร้อย');
+  } catch (err) {
+    showGlobalError(err);
+  }
+}
+
+async function deleteRepairTicket(repairId) {
+  if (!confirm('คุณต้องการลบใบรับซ่อมนี้หรือไม่? ข้อมูลจะถูกลบถาวร')) return;
+  try {
+    await request(`/repairs/${repairId}`, { method: 'DELETE' });
+    showToast('ลบใบรับซ่อมเรียบร้อยแล้ว');
+    await loadRepairs();
+  } catch (err) {
+    showGlobalError(err);
+  }
+}
+
+async function openRepairModal(repairId = null) {
+  const modal = $('#repair-modal');
+  if (!modal) return;
+  $('#repair-form').reset();
+  $('#repair-edit-id').value = '';
+  $('#repair-form-error').classList.add('hidden');
+  $('#repair-date').value = today();
+  $('#repair-is-subcontract').checked = true;
+  $('#repair-subcontract-reason').value = 'มีอาการเสียเกี่ยวกับระบบวงจรไฟฟ้า/เมนบอร์ดขั้นสูง จำเป็นต้องใช้เครื่องมือและช่างชำนาญการเฉพาะทาง';
+  $('#repair-estimated-cost').value = '0';
+  $('#repair-deposit-amount').value = '0';
+  $('#repair-status').value = 'PENDING';
+
+  await populateRepairCustomerSelect();
+
+  if (repairId) {
+    $('#repair-modal-title').textContent = 'แก้ไขใบรับเครื่องซ่อม';
+    try {
+      const { data: ticket } = await request(`/repairs/${repairId}`);
+      $('#repair-edit-id').value = ticket.id;
+      $('#repair-date').value = ticket.ticket_date ? ticket.ticket_date.slice(0, 10) : today();
+      $('#repair-customer-id').value = String(ticket.customer_id);
+      $('#repair-appointment-date').value = ticket.appointment_date ? ticket.appointment_date.slice(0, 10) : '';
+      $('#repair-device-type').value = ticket.device_type || 'notebook';
+      $('#repair-brand-model').value = ticket.brand_model || '';
+      $('#repair-serial-number').value = ticket.serial_number || '';
+      $('#repair-passcode').value = ticket.passcode || '';
+      $('#repair-accessories').value = ticket.accessories || '';
+      $('#repair-symptoms').value = ticket.symptoms || '';
+      $('#repair-physical-condition').value = ticket.physical_condition || '';
+      $('#repair-is-subcontract').checked = ticket.is_subcontract !== false;
+      $('#repair-subcontract-reason').value = ticket.subcontract_reason || '';
+      $('#repair-estimated-cost').value = ticket.estimated_cost || 0;
+      $('#repair-deposit-amount').value = ticket.deposit_amount || 0;
+      $('#repair-status').value = ticket.status || 'PENDING';
+      $('#repair-technician-notes').value = ticket.technician_notes || '';
+    } catch (err) {
+      showGlobalError(err);
+      return;
+    }
+  } else {
+    $('#repair-modal-title').textContent = 'เปิดใบรับเครื่องซ่อม / สัญญาส่งต่อศูนย์เฉพาะทาง';
+  }
+
+  modal.classList.remove('hidden');
+  refreshIcons();
+}
+
+function closeRepairModal() {
+  $('#repair-modal')?.classList.add('hidden');
+}
+
+async function handleRepairSubmit(e) {
+  e.preventDefault();
+  const errBox = $('#repair-form-error');
+  errBox.classList.add('hidden');
+
+  const editId = $('#repair-edit-id').value;
+  const payload = {
+    ticket_date: $('#repair-date').value,
+    customer_id: Number($('#repair-customer-id').value),
+    appointment_date: $('#repair-appointment-date').value || null,
+    device_type: $('#repair-device-type').value,
+    brand_model: $('#repair-brand-model').value.trim(),
+    serial_number: $('#repair-serial-number').value.trim() || null,
+    passcode: $('#repair-passcode').value.trim() || null,
+    accessories: $('#repair-accessories').value.trim() || null,
+    symptoms: $('#repair-symptoms').value.trim(),
+    physical_condition: $('#repair-physical-condition').value.trim() || null,
+    is_subcontract: $('#repair-is-subcontract').checked,
+    subcontract_reason: $('#repair-subcontract-reason').value.trim() || null,
+    estimated_cost: Number($('#repair-estimated-cost').value) || 0,
+    deposit_amount: Number($('#repair-deposit-amount').value) || 0,
+    status: $('#repair-status').value,
+    technician_notes: $('#repair-technician-notes').value.trim() || null
+  };
+
+  if (!payload.customer_id) {
+    errBox.textContent = 'กรุณาเลือกลูกค้า';
+    errBox.classList.remove('hidden');
+    return;
+  }
+  if (!payload.brand_model) {
+    errBox.textContent = 'กรุณาระบุยี่ห้อ / รุ่น';
+    errBox.classList.remove('hidden');
+    return;
+  }
+  if (!payload.symptoms) {
+    errBox.textContent = 'กรุณาระบุอาการเสีย';
+    errBox.classList.remove('hidden');
+    return;
+  }
+
+  try {
+    let saved;
+    if (editId) {
+      const res = await request(`/repairs/${editId}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      });
+      saved = res.data;
+      showToast('บันทึกการแก้ไขใบรับซ่อมเรียบร้อย');
+    } else {
+      const res = await request('/repairs', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+      saved = res.data;
+      showToast(`เปิดใบรับซ่อม ${saved.ticket_number} เรียบร้อยแล้ว`);
+    }
+
+    closeRepairModal();
+    await loadRepairs();
+
+    if (!editId && saved && confirm(`สร้างใบรับซ่อม ${saved.ticket_number} สำเร็จ ต้องการพิมพ์ใบรับเครื่องและหนังสือสัญญาเลยหรือไม่?`)) {
+      window.open(`./print.html?repair_id=${saved.id}`, '_blank', 'noopener');
+    }
+  } catch (err) {
+    errBox.textContent = err.message || 'บันทึกไม่สำเร็จ';
+    errBox.classList.remove('hidden');
+  }
+}
+
+// Event Listeners สำหรับงานรับซ่อม
+$('#open-repair-modal')?.addEventListener('click', () => openRepairModal());
+$$('[data-close-repair]').forEach((el) => el.addEventListener('click', closeRepairModal));
+$('#repair-form')?.addEventListener('submit', handleRepairSubmit);
+$('#repair-filter-button')?.addEventListener('click', () => loadRepairs());
+$('#repair-search')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') loadRepairs(); });
+$('#repair-status-filter')?.addEventListener('change', () => loadRepairs());

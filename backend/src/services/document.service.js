@@ -312,7 +312,7 @@ async function insertItems(client, documentId, items) {
     
     for (const item of items) {
         valueExpressions.push(
-            `($1, $${paramIndex}, $${paramIndex+1}, $${paramIndex+2}, $${paramIndex+3}, $${paramIndex+4}, $${paramIndex+5}, $${paramIndex+6}, $${paramIndex+7}, $${paramIndex+8}, $${paramIndex+9})`
+            `($1, $${paramIndex}, $${paramIndex+1}, $${paramIndex+2}, $${paramIndex+3}, $${paramIndex+4}, $${paramIndex+5}, $${paramIndex+6}, $${paramIndex+7}, $${paramIndex+8}, $${paramIndex+9}, $${paramIndex+10}, $${paramIndex+11})`
         );
         values.push(
             item.sort_order,
@@ -324,15 +324,18 @@ async function insertItems(client, documentId, items) {
             item.unit || null,
             item.unit_price || null,
             item.line_total || 0,
-            item.text_style || 'normal'
+            item.text_style || 'normal',
+            item.serial_number || null,
+            item.warranty_period || null
         );
-        paramIndex += 10;
+        paramIndex += 12;
     }
     
     const query = `
         INSERT INTO document_items (
             document_id, sort_order, line_type, item_type, product_id,
-            description, quantity, unit, unit_price, line_total, text_style
+            description, quantity, unit, unit_price, line_total, text_style,
+            serial_number, warranty_period
         ) VALUES ${valueExpressions.join(', ')}
     `;
     await client.query(query, values);

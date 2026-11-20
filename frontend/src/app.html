@@ -41,6 +41,7 @@
       <nav class="nav-list" aria-label="เมนูหลัก">
         <button class="nav-item active" data-view="dashboard" data-permission="dashboard.view"><i data-lucide="layout-dashboard"></i><span>แดชบอร์ด</span></button>
         <button class="nav-item" data-view="documents" data-permission="document.view"><i data-lucide="file-plus-2"></i><span>เอกสาร</span></button>
+        <button class="nav-item" data-view="repairs" data-permission="document.view"><i data-lucide="wrench"></i><span>งานรับซ่อม</span></button>
         <button class="nav-item" data-view="customers" data-permission="customer.view"><i data-lucide="users"></i><span>รายชื่อลูกค้า</span></button>
         <button class="nav-item" data-view="products" data-permission="product.view"><i data-lucide="package"></i><span>สินค้า / บริการ</span></button>
         <button class="nav-item" data-view="reports" data-permission="report.view"><i data-lucide="chart-no-axes-combined"></i><span>รายงานการเงิน</span></button>
@@ -203,6 +204,49 @@
         <article class="panel">
           <div id="documents-mode-note" class="documents-mode-note hidden"></div>
           <div class="table-wrap"><table><thead><tr><th>เลขที่เอกสาร</th><th>วันที่</th><th>ลูกค้า</th><th>ประเภท</th><th>ยอดรวม</th><th>ยอดสุทธิ</th><th>สถานะ</th><th></th></tr></thead><tbody id="documents-table"><tr><td colspan="8" class="table-empty">กำลังโหลด...</td></tr></tbody></table></div>
+        </article>
+      </section>
+
+      <section id="view-repairs" class="view">
+        <div class="section-toolbar">
+          <div class="filter-row">
+            <input id="repair-search" class="search-input" placeholder="ค้นหาเลขที่ใบรับซ่อม, รุ่น, S/N, หรือลูกค้า">
+            <select id="repair-status-filter">
+              <option value="all">ทุกสถานะงาน</option>
+              <option value="PENDING">รอดำเนินการ (รอตรวจเช็ก)</option>
+              <option value="SENT_OUT">ส่งศูนย์เฉพาะทางแล้ว</option>
+              <option value="IN_PROGRESS">กำลังดำเนินการซ่อม</option>
+              <option value="DONE">ซ่อมเสร็จแล้ว (รอลูกค้ารับ)</option>
+              <option value="DELIVERED">ส่งมอบลูกค้าแล้ว (ปิดงาน)</option>
+              <option value="CANCELLED">ยกเลิกงานซ่อม</option>
+            </select>
+            <button id="repair-filter-button" class="btn btn-secondary" type="button"><i data-lucide="search"></i> ค้นหา</button>
+          </div>
+          <div class="toolbar-actions">
+            <button class="btn btn-primary writer-only" id="open-repair-modal" type="button"><i data-lucide="wrench"></i> เปิดใบรับซ่อมใหม่</button>
+          </div>
+        </div>
+        <article class="panel">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>เลขที่ใบรับซ่อม</th>
+                  <th>วันที่</th>
+                  <th>ลูกค้า</th>
+                  <th>อุปกรณ์ / ยี่ห้อ-รุ่น</th>
+                  <th>อาการเสีย</th>
+                  <th>การส่งต่อ</th>
+                  <th>สถานะ</th>
+                  <th>ยอดประเมิน</th>
+                  <th>จัดการ</th>
+                </tr>
+              </thead>
+              <tbody id="repairs-table">
+                <tr><td colspan="9" class="table-empty">กำลังโหลดข้อมูลงานรับซ่อม...</td></tr>
+              </tbody>
+            </table>
+          </div>
         </article>
       </section>
 
@@ -848,6 +892,138 @@
         <button id="reason-modal-cancel" class="btn btn-ghost" type="button">ยกเลิก</button>
         <button id="reason-modal-confirm" class="btn btn-danger" type="button">ยืนยัน</button>
       </div>
+    </div>
+  </div>
+
+  <div id="repair-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="repair-modal-title">
+    <div class="modal-backdrop" data-close-repair></div>
+    <div class="modal-card modal-lg" style="max-width: 900px;">
+      <div class="modal-header">
+        <div>
+          <h2 id="repair-modal-title">เปิดใบรับเครื่องซ่อม / สัญญาส่งต่อศูนย์เฉพาะทาง</h2>
+          <p>บันทึกประวัติเครื่อง อาการเสีย และหนังสือยินยอมส่งซ่อมต่อศูนย์ช่างภายนอก</p>
+        </div>
+        <button class="icon-button" data-close-repair aria-label="ปิด"><i data-lucide="x"></i></button>
+      </div>
+
+      <form id="repair-form" class="stack-form">
+        <input id="repair-edit-id" type="hidden">
+        
+        <div class="form-grid-3">
+          <label>วันที่รับเครื่อง *
+            <input id="repair-date" type="date" required>
+          </label>
+          <label>ลูกค้า *
+            <select id="repair-customer-id" required>
+              <option value="">-- เลือกลูกค้า --</option>
+            </select>
+          </label>
+          <label>วันนัดหมายรับเครื่อง / แจ้งผล
+            <input id="repair-appointment-date" type="date">
+          </label>
+        </div>
+
+        <fieldset class="sub-card">
+          <legend><i data-lucide="laptop"></i> ข้อมูลเครื่องและอุปกรณ์</legend>
+          <div class="form-grid-3">
+            <label>ประเภทอุปกรณ์ *
+              <select id="repair-device-type" required>
+                <option value="notebook">โน้ตบุ๊ก (Notebook / Laptop)</option>
+                <option value="pc">คอมพิวเตอร์ตั้งโต๊ะ (PC Desktop)</option>
+                <option value="all-in-one">All-in-One PC</option>
+                <option value="macbook">MacBook / iMac</option>
+                <option value="printer">เครื่องพิมพ์ (Printer)</option>
+                <option value="monitor">จอภาพ (Monitor)</option>
+                <option value="other">อุปกรณ์อื่น ๆ</option>
+              </select>
+            </label>
+            <label>ยี่ห้อ / รุ่น *
+              <input id="repair-brand-model" placeholder="เช่น Asus TUF Gaming F15, Acer Nitro 5" required>
+            </label>
+            <label>Serial Number (S/N)
+              <input id="repair-serial-number" placeholder="เช่น FX506H-HN002T...">
+            </label>
+          </div>
+          <div class="form-grid-2">
+            <label>รหัสผ่านเข้าเครื่อง / PIN (เพื่อทดสอบระบบ)
+              <input id="repair-passcode" placeholder="เช่น 1234 หรือ ไม่มี">
+            </label>
+            <label>อุปกรณ์ที่ลูกค้านำมาด้วย
+              <input id="repair-accessories" placeholder="เช่น Adapter ชาร์จไฟ, กระเป๋า, กล่อง, เม้าส์">
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset class="sub-card">
+          <legend><i data-lucide="alert-triangle"></i> อาการเสียและสภาพเครื่องก่อนรับ</legend>
+          <div class="form-grid-2">
+            <label>อาการเสียที่ลูกค้าแจ้ง *
+              <textarea id="repair-symptoms" rows="3" placeholder="ระบุอาการเสีย เช่น เปิดไม่ติด เสียบชาร์จไฟไม่เข้า มีเสียงร้อง ช็อตไหม้ จอฟ้า..." required></textarea>
+            </label>
+            <label>สภาพภายนอก / รอยตำหนิเดิม
+              <textarea id="repair-physical-condition" rows="3" placeholder="ระบุสภาพภายนอก เช่น มีรอยขีดข่วนฝาบน, บานพับฝืด, น็อตฝาหลังหาย 1 ตัว..."></textarea>
+            </label>
+          </div>
+        </fieldset>
+
+        <!-- หมวดข้อตกลงและสัญญาความยินยอมส่งต่อศูนย์เฉพาะทาง -->
+        <fieldset class="sub-card" style="border-left: 4px solid #f59e0b; background: rgba(245, 158, 11, 0.05);">
+          <legend style="color: #b45309; font-weight: bold;"><i data-lucide="shield-alert"></i> หนังสือสัญญาความยินยอมส่งซ่อมต่อศูนย์เฉพาะทาง (Subcontracting Consent)</legend>
+          <label class="toggle-card" style="margin-bottom: 8px;">
+            <input id="repair-is-subcontract" type="checkbox" checked>
+            <span class="toggle-control"></span>
+            <div>
+              <strong style="color: #92400e;">ส่งต่อตรวจเช็ก/ซ่อมแซมกับศูนย์ช่างเฉพาะทางภายนอก</strong>
+              <small>กรณีอาการหนัก เปิดไม่ติด ระบบวงจรไฟฟ้า/เมนบอร์ดเสียหาย ต้องใช้เครื่องมือพิเศษ</small>
+            </div>
+          </label>
+
+          <label>เหตุผลความจำเป็นในการส่งต่อ
+            <input id="repair-subcontract-reason" value="มีอาการเสียเกี่ยวกับระบบวงจรไฟฟ้า/เมนบอร์ดขั้นสูง จำเป็นต้องใช้เครื่องมือและช่างชำนาญการเฉพาะทาง">
+          </label>
+
+          <div class="subcontract-terms-box" style="margin-top: 10px; padding: 12px 14px; background: rgba(245, 158, 11, 0.1); border-radius: 8px; font-size: 13px; color: #92400e; line-height: 1.6;">
+            <strong>ข้อกำหนดและเงื่อนไขความยินยอม (จะถูกพิมพ์ลงในใบรับเครื่องเพื่อเป็นลายลักษณ์อักษร):</strong>
+            <ol style="margin: 6px 0 0 18px; padding: 0;">
+              <li>ลูกค้ารับทราบและยินยอมให้ร้าน ต้อง เซอร์วิส ไอที ส่งต่อเครื่องไปยังศูนย์บริการหรือช่างผู้เชี่ยวชาญเฉพาะทางเพื่อตรวจสอบและซ่อมแซม</li>
+              <li>ร้านจะแจ้งประเมินราคาและขออนุมัติจากลูกค้าก่อนลงมือซ่อมแซมจริงทุกครั้ง (หากลูกค้าไม่อนุมัติซ่อม มีเพียงค่าตรวจเช็กตามที่ตกลง)</li>
+              <li>ลูกค้ามีหน้าที่สำรองข้อมูลสำคัญ ทางร้านและศูนย์ช่างไม่รับผิดชอบต่อการสูญหายของข้อมูลในอุปกรณ์จัดเก็บ (HDD/SSD) ที่เกิดจากระบบไฟฟ้าช็อตหรือชำรุดมาก่อนหน้า</li>
+              <li>เครื่องที่มีอาการไฟฟ้าลัดวงจรหรือโดนน้ำ อาจมีชิ้นส่วนภายในเสื่อมสภาพสะสมอยู่ก่อนตรวจเช็ก</li>
+              <li>ระยะเวลาดำเนินการส่งต่อศูนย์ภายนอกโดยประมาณ 7 - 14 วันทำการ (ไม่รวมวันหยุด)</li>
+            </ol>
+          </div>
+        </fieldset>
+
+        <div class="form-grid-3">
+          <label>ราคาประเมินเบื้องต้น (บาท)
+            <input id="repair-estimated-cost" type="number" min="0" step="0.01" value="0">
+          </label>
+          <label>เงินมัดจำ (บาท)
+            <input id="repair-deposit-amount" type="number" min="0" step="0.01" value="0">
+          </label>
+          <label>สถานะงานซ่อม
+            <select id="repair-status">
+              <option value="PENDING">รอดำเนินการ (รอช่างตรวจเช็ก)</option>
+              <option value="SENT_OUT">ส่งศูนย์เฉพาะทางแล้ว</option>
+              <option value="IN_PROGRESS">กำลังดำเนินการซ่อม</option>
+              <option value="DONE">ซ่อมเสร็จแล้ว (รอลูกค้ารับ)</option>
+              <option value="DELIVERED">ส่งมอบลูกค้าแล้ว (ปิดงาน)</option>
+              <option value="CANCELLED">ยกเลิกงานซ่อม</option>
+            </select>
+          </label>
+        </div>
+
+        <label>บันทึกช่าง / หมายเหตุภายใน
+          <textarea id="repair-technician-notes" rows="2" placeholder="สำหรับบันทึกการทำงานของช่าง"></textarea>
+        </label>
+
+        <div id="repair-form-error" class="alert alert-danger hidden"></div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" type="button" data-close-repair>ยกเลิก</button>
+          <button class="btn btn-primary" type="submit"><i data-lucide="save"></i> บันทึกใบรับซ่อม</button>
+        </div>
+      </form>
     </div>
   </div>
 

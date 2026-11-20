@@ -82,7 +82,9 @@ function calculateDocumentTotals({
             unit: (item.unit || 'งาน').trim(),
             unit_price: unitPrice.toFixed(2),
             line_total: lineTotal.toFixed(2),
-            text_style: item.text_style || 'normal'
+            text_style: item.text_style || 'normal',
+            serial_number: item.serial_number ? String(item.serial_number).trim() : null,
+            warranty_period: item.warranty_period ? String(item.warranty_period).trim() : null
         });
     });
 

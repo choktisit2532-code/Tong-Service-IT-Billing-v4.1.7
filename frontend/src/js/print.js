@@ -290,7 +290,8 @@ function signatures(doc) {
 function rowUnits(item) {
   if (item.line_type === 'section') return 1.2;
   if (item.line_type === 'note') return Math.max(1.2, Math.ceil(String(item.description || '').length / 80));
-  return Math.max(1, Math.ceil(String(item.description || '').length / 72));
+  const hasMeta = item.serial_number || item.warranty_period;
+  return Math.max(hasMeta ? 1.4 : 1, Math.ceil(String(item.description || '').length / 72));
 }
 
 function getFooterUnits(doc) {
@@ -354,7 +355,11 @@ function itemRows(items, startSequence) {
     if (item.line_type === 'section') return `<tr class="section-row"><td></td><td colspan="5">${escapeHtml(item.description)}</td></tr>`;
     if (item.line_type === 'note') return `<tr class="note-row ${item.text_style === 'warning' ? 'warning-row' : ''}"><td></td><td colspan="5">${escapeHtml(item.description)}</td></tr>`;
     sequence += 1;
-    return `<tr><td class="center">${sequence}</td><td>${escapeHtml(item.description)}</td><td class="center">${number(item.quantity).replace('.00', '')}</td><td class="center">${escapeHtml(item.unit || '')}</td><td class="number">${number(item.unit_price)}</td><td class="number">${number(item.line_total)}</td></tr>`;
+    let meta = [];
+    if (item.serial_number) meta.push(`S/N: ${escapeHtml(item.serial_number)}`);
+    if (item.warranty_period) meta.push(`ประกัน: ${escapeHtml(item.warranty_period)}`);
+    const metaHtml = meta.length ? `<div style="font-size:11px;color:#475569;margin-top:2px;font-weight:normal;">[${meta.join(' | ')}]</div>` : '';
+    return `<tr><td class="center">${sequence}</td><td>${escapeHtml(item.description)}${metaHtml}</td><td class="center">${number(item.quantity).replace('.00', '')}</td><td class="center">${escapeHtml(item.unit || '')}</td><td class="number">${number(item.unit_price)}</td><td class="number">${number(item.line_total)}</td></tr>`;
   }).join('');
   return { html, sequence };
 }
@@ -433,7 +438,196 @@ function renderPages(doc) {
     : '';
 }
 
+const PRINT_DEVICE_LABELS = {
+  notebook: 'โน้ตบุ๊ก (Notebook)',
+  pc: 'คอมพิวเตอร์ตั้งโต๊ะ (PC Desktop)',
+  'all-in-one': 'All-in-One PC',
+  macbook: 'MacBook / iMac',
+  printer: 'เครื่องพิมพ์ (Printer)',
+  monitor: 'จอภาพ (Monitor)',
+  other: 'อุปกรณ์อื่น ๆ'
+};
+
+async function renderRepairTicket(repairId) {
+  if (attachPanel) attachPanel.classList.add('hidden');
+  if (excelButton) excelButton.classList.add('hidden');
+  const editBtn = document.getElementById('edit-doc-button');
+  if (editBtn) editBtn.classList.add('hidden');
+
+  const { data: ticket } = await request(`/repairs/${repairId}`);
+  let settings = {};
+  try {
+    const res = await request('/settings');
+    settings = res.data || {};
+  } catch { /* use defaults */ }
+
+  const shopName = [settings.shop_name_th, settings.shop_name_en].filter(Boolean).join(' ') || 'ร้าน ต้อง เซอร์วิส ไอที (Tong Service IT)';
+  const shopPhone = settings.shop_phone || '084-842-5950';
+  const shopAddress = settings.shop_address || '445 หมู่ 5 ต.โคกยาง อ.เหนือคลอง จ.กระบี่ 81130';
+  const logoUrl = settings.logo_url || './assets/logo-placeholder.svg';
+
+  document.title = `${ticket.ticket_number} | ใบรับเครื่องซ่อมและสัญญาความยินยอม`;
+  pageCount.textContent = 'ตัวอย่าง A4: 1 หน้า (ใบรับเครื่องและหนังสือสัญญา)';
+  pageWarning.classList.add('hidden');
+
+  const customer = ticket.customer_snapshot || {};
+  const devLabel = PRINT_DEVICE_LABELS[ticket.device_type] || ticket.device_type;
+  const estCost = Number(ticket.estimated_cost) || 0;
+  const deposit = Number(ticket.deposit_amount) || 0;
+  const balance = Math.max(0, estCost - deposit);
+
+  const html = `
+    <section class="a4-sheet repair-print-sheet" style="font-family:'Sarabun',sans-serif;color:#1e293b;padding:5mm 8mm;font-size:12.5px;line-height:1.45;position:relative;display:flex;flex-direction:column;justify-content:space-between;height:297mm;box-sizing:border-box;">
+      
+      <!-- ==================== ส่วนที่ 1: สำหรับร้านค้าเก็บเป็นหลักฐาน (Store Copy) ==================== -->
+      <div class="repair-store-copy" style="flex:0 0 auto;">
+        
+        <!-- Header -->
+        <div style="display:grid;grid-template-columns:55px 1fr auto;gap:10px;align-items:center;border-bottom:1.5px solid #0284c7;padding-bottom:6px;margin-bottom:6px;">
+          <img src="${escapeHtml(logoUrl)}" alt="โลโก้" style="width:55px;height:55px;object-fit:contain;" onerror="this.onerror=null;this.src='./assets/logo-placeholder.svg'">
+          <div>
+            <h1 style="font-size:15px;font-weight:700;margin:0;color:#0f172a;">${escapeHtml(shopName)}</h1>
+            <p style="margin:1px 0;font-size:11px;color:#475569;">${escapeHtml(shopAddress)} · โทร/LINE: ${escapeHtml(shopPhone)}</p>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:13.5px;font-weight:700;color:#0369a1;background:#e0f2fe;padding:2px 8px;border-radius:4px;display:inline-block;">ใบรับเครื่องซ่อมและหนังสือสัญญาความยินยอม</div>
+            <div style="font-size:11px;color:#475569;margin-top:2px;">(ต้นฉบับ - สำหรับร้านค้าเก็บเป็นหลักฐาน)</div>
+            <div style="font-size:12px;margin-top:2px;"><strong>เลขที่:</strong> <span style="font-family:monospace;font-size:13px;font-weight:700;color:#0f172a;">${escapeHtml(ticket.ticket_number)}</span></div>
+            <div style="font-size:11.5px;"><strong>วันที่รับ:</strong> ${dateThai(ticket.ticket_date)}</div>
+          </div>
+        </div>
+
+        <!-- 2 Column Info: ลูกค้า & อุปกรณ์ -->
+        <div style="display:grid;grid-template-columns:1fr 1.15fr;gap:8px;margin-bottom:6px;">
+          <div style="border:1px solid #cbd5e1;border-radius:6px;padding:6px 9px;background:#f8fafc;">
+            <strong style="color:#0369a1;font-size:12px;display:block;border-bottom:1px solid #e2e8f0;padding-bottom:2px;margin-bottom:4px;">ข้อมูลผู้ส่งซ่อม (ลูกค้า)</strong>
+            <div><strong>ชื่อ:</strong> ${escapeHtml(customer.name || '-')}</div>
+            <div><strong>โทรศัพท์:</strong> ${escapeHtml(customer.phone || '-')}</div>
+            <div style="font-size:11.5px;color:#475569;"><strong>ที่อยู่:</strong> ${escapeHtml(customer.address || '-')}</div>
+          </div>
+
+          <div style="border:1px solid #cbd5e1;border-radius:6px;padding:6px 9px;background:#f8fafc;">
+            <strong style="color:#0369a1;font-size:12px;display:block;border-bottom:1px solid #e2e8f0;padding-bottom:2px;margin-bottom:4px;">ข้อมูลอุปกรณ์และสภาพเครื่อง</strong>
+            <div><strong>ประเภท:</strong> ${escapeHtml(devLabel)} · <strong>ยี่ห้อ/รุ่น:</strong> ${escapeHtml(ticket.brand_model)}</div>
+            <div><strong>S/N:</strong> <span style="font-family:monospace;">${escapeHtml(ticket.serial_number || '-')}</span> · <strong>PIN/รหัสผ่าน:</strong> ${escapeHtml(ticket.passcode || 'ไม่มี')}</div>
+            <div><strong>อุปกรณ์ที่นำมาด้วย:</strong> ${escapeHtml(ticket.accessories || 'ตัวเครื่องอย่างเดียว')}</div>
+          </div>
+        </div>
+
+        <!-- Symptoms & Condition -->
+        <div style="border:1px solid #cbd5e1;border-radius:6px;padding:6px 9px;margin-bottom:6px;background:#fff;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div><strong>อาการเสียที่ลูกค้าแจ้ง:</strong> <span style="color:#b91c1c;font-weight:600;">${escapeHtml(ticket.symptoms)}</span></div>
+            <div><strong>สภาพภายนอก / ตำหนิเดิม:</strong> ${escapeHtml(ticket.physical_condition || 'ปกติ / ไม่มีตำหนิชัดเจน')}</div>
+          </div>
+          <div style="display:flex;gap:20px;margin-top:4px;padding-top:4px;border-top:1px dashed #e2e8f0;font-size:11.5px;">
+            <span><strong>ราคาประเมินเบื้องต้น:</strong> ฿${number(estCost)}</span>
+            <span><strong>เงินมัดจำ:</strong> ฿${number(deposit)}</span>
+            <span><strong>คงเหลือชำระวันรับเครื่อง:</strong> ฿${number(balance)}</span>
+            <span><strong>กำหนดนัดรับ / แจ้งผล:</strong> ${ticket.appointment_date ? dateThai(ticket.appointment_date) : 'ทางร้านจะโทรแจ้งผล'}</span>
+          </div>
+        </div>
+
+        <!-- Subcontracting Legal Terms -->
+        <div style="border:1.5px solid #d97706;border-radius:6px;padding:7px 10px;background:#fffbeb;margin-bottom:8px;">
+          <div style="font-weight:700;color:#92400e;font-size:12px;margin-bottom:3px;display:flex;align-items:center;gap:6px;">
+            <span>⚖️ หนังสือสัญญาความยินยอมส่งซ่อมต่อศูนย์เฉพาะทาง และข้อตกลงการให้บริการ</span>
+          </div>
+          <div style="font-size:11px;color:#78350f;line-height:1.5;">
+            ข้าพเจ้า (ลูกค้าตามชื่อข้างต้น) ได้ส่งมอบเครื่องอุปกรณ์ดังกล่าวข้างต้นให้แก่ร้าน ต้อง เซอร์วิส ไอที และรับทราบ ตกลง ยินยอมตามเงื่อนไขดังต่อไปนี้:
+            <ol style="margin:3px 0 0 16px;padding:0;">
+              <li><strong>ความยินยอมส่งต่อศูนย์เฉพาะทาง:</strong> ลูกค้ารับทราบและยินยอมให้ร้านฯ ดำเนินการส่งเครื่องต่อไปยังศูนย์บริการหรือช่างชำนาญการเฉพาะทางภายนอก เนื่องจากมีอาการเสียเกี่ยวกับระบบวงจรไฟฟ้า/เมนบอร์ดขั้นสูง (${escapeHtml(ticket.subcontract_reason || 'ต้องใช้เครื่องมือและช่างเฉพาะทาง')})</li>
+              <li><strong>การประเมินราคา:</strong> ร้านจะติดต่อแจ้งผลตรวจเช็กและประเมินค่าใช้จ่ายเพื่อให้ลูกค้าอนุมัติก่อนลงมือดำเนินการซ่อมจริงทุกครั้ง (หากลูกค้าไม่อนุมัติซ่อม มีเพียงค่าตรวจเช็กตามที่ตกลง)</li>
+              <li><strong>ความรับผิดชอบต่อข้อมูล:</strong> ลูกค้ามีหน้าที่สำรองข้อมูลสำคัญ ทางร้านและศูนย์ช่างภายนอกไม่รับผิดชอบต่อความสูญหายหรือเสียหายของข้อมูลในอุปกรณ์จัดเก็บข้อมูล (Harddisk/SSD) จากเหตุไฟฟ้าลัดวงจรหรือความชำรุดที่มีอยู่เดิม</li>
+              <li><strong>ความเสียหายต่อเนื่อง:</strong> อุปกรณ์ที่ผ่านการช็อต ลัดวงจร หรือโดนน้ำ อาจมีชิ้นส่วนภายในเสื่อมสภาพสะสม ซึ่งอาจส่งผลต่อการทำงานส่วนอื่นในระหว่างหรือหลังการตรวจเช็ก</li>
+              <li><strong>ระยะเวลาดำเนินการ:</strong> ระยะเวลาตรวจเช็กและส่งซ่อมภายนอกโดยประมาณ 7 - 14 วันทำการ (ไม่รวมวันหยุดนักขัตฤกษ์)</li>
+            </ol>
+          </div>
+        </div>
+
+        <!-- Store Signatures -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:6px;">
+          <div style="text-align:center;border:1px dashed #cbd5e1;border-radius:6px;padding:8px;">
+            <div style="height:32px;"></div>
+            <div style="border-top:1px dotted #475569;width:75%;margin:0 auto 3px;"></div>
+            <div style="font-size:11.5px;font-weight:600;">ลงชื่อ ........................................................... ผู้ส่งซ่อม / ผู้ยินยอมตามสัญญา</div>
+            <div style="font-size:10.5px;color:#64748b;">( ${escapeHtml(customer.name || 'ลูกค้า')} ) วันที่ ......../......../........</div>
+          </div>
+          <div style="text-align:center;border:1px dashed #cbd5e1;border-radius:6px;padding:8px;">
+            <div style="height:32px;"></div>
+            <div style="border-top:1px dotted #475569;width:75%;margin:0 auto 3px;"></div>
+            <div style="font-size:11.5px;font-weight:600;">ลงชื่อ ........................................................... ช่างผู้รับเครื่อง / ร้านต้อง เซอร์วิส ไอที</div>
+            <div style="font-size:10.5px;color:#64748b;">( ผู้รับมอบเครื่องและเอกสาร ) วันที่ ......../......../........</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ==================== เส้นรอยปรุตัดกระดาษ ==================== -->
+      <div style="border-top:1.5px dashed #94a3b8;margin:10px 0;position:relative;text-align:center;">
+        <span style="position:relative;top:-10px;background:#fff;padding:0 12px;font-size:11px;color:#64748b;font-weight:600;">
+          ✂ ตัดตามรอยปรุ (ท่อนล่างมอบให้ลูกค้าถือกลับบ้าน เป็นหลักฐานในการมารับเครื่อง)
+        </span>
+      </div>
+
+      <!-- ==================== ส่วนที่ 2: ใบรับเครื่องสำหรับลูกค้า (Customer Copy) ==================== -->
+      <div class="repair-customer-copy" style="flex:0 0 auto;border:1.5px solid #0284c7;border-radius:8px;padding:8px 12px;background:#f0f9ff;">
+        
+        <!-- Customer Part Header -->
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid #bae6fd;padding-bottom:5px;margin-bottom:6px;">
+          <div>
+            <h2 style="font-size:14px;font-weight:700;margin:0;color:#0369a1;">ใบรับเครื่องซ่อม (สำหรับลูกค้า) · ${escapeHtml(shopName)}</h2>
+            <div style="font-size:11px;color:#0284c7;">ติดต่อสอบถามสถานะงานซ่อม: โทร/LINE <strong>${escapeHtml(shopPhone)}</strong></div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:12px;"><strong>เลขที่ใบรับ:</strong> <span style="font-family:monospace;font-size:13px;font-weight:700;color:#0369a1;">${escapeHtml(ticket.ticket_number)}</span></div>
+            <div style="font-size:11px;color:#475569;">วันที่รับเครื่อง: ${dateThai(ticket.ticket_date)}</div>
+          </div>
+        </div>
+
+        <!-- Customer Part Details Grid -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;margin-bottom:6px;">
+          <div>
+            <div><strong>ลูกค้า:</strong> ${escapeHtml(customer.name || '-')} (โทร: ${escapeHtml(customer.phone || '-')})</div>
+            <div><strong>อุปกรณ์:</strong> ${escapeHtml(devLabel)} ${escapeHtml(ticket.brand_model)}</div>
+            <div><strong>S/N:</strong> <span style="font-family:monospace;">${escapeHtml(ticket.serial_number || '-')}</span></div>
+          </div>
+          <div>
+            <div><strong>อุปกรณ์ที่นำมาด้วย:</strong> ${escapeHtml(ticket.accessories || 'ตัวเครื่องอย่างเดียว')}</div>
+            <div><strong>อาการเสียที่แจ้ง:</strong> <span style="color:#b91c1c;font-weight:600;">${escapeHtml(ticket.symptoms)}</span></div>
+            <div><strong>ราคาประเมินเบื้องต้น:</strong> ฿${number(estCost)} · <strong>มัดจำแล้ว:</strong> ฿${number(deposit)}</div>
+          </div>
+        </div>
+
+        <!-- Customer Note & Claim Signature -->
+        <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:10px;align-items:center;background:#fff;border:1px solid #bae6fd;border-radius:6px;padding:6px 10px;">
+          <div style="font-size:10.5px;color:#475569;line-height:1.4;">
+            <strong style="color:#0369a1;">เงื่อนไขสำคัญในการรับเครื่องคืน:</strong>
+            <div>1. โปรดนำใบรับเครื่องนี้มาแสดงทุกครั้งเมื่อติดต่อรับเครื่อง</div>
+            <div>2. ร้านจะโทรแจ้งผลตรวจเช็กและประเมินราคาก่อนเริ่มซ่อมแซมจริงทุกครั้ง</div>
+            <div>3. หากไม่มารับเครื่องคืนภายใน 60 วันนับแต่วันที่แจ้ง ทางร้านขอสงวนสิทธิ์ในการจัดการตามระเบียบร้าน</div>
+          </div>
+          <div style="text-align:center;border-left:1px dashed #cbd5e1;padding-left:10px;">
+            <div style="font-size:11px;color:#64748b;margin-bottom:18px;">ลงชื่อผู้รับเครื่องซ่อม</div>
+            <div style="border-top:1px dotted #475569;width:80%;margin:0 auto 2px;"></div>
+            <div style="font-size:11px;font-weight:600;">ร้าน ต้อง เซอร์วิส ไอที</div>
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+  `;
+
+  root.innerHTML = html;
+}
+
 async function render() {
+  const repairId = new URLSearchParams(location.search).get('repair_id');
+  if (repairId) {
+    await renderRepairTicket(repairId);
+    return;
+  }
   if (!id) throw new Error('ไม่พบรหัสเอกสาร');
   const { data: doc } = await request(`/documents/${id}`);
   currentDocument = doc;

@@ -88,7 +88,9 @@ const documentItemSchema = z.object({
     quantity: positiveDecimalInput.nullable().optional(),
     unit: optionalText(50),
     unit_price: decimalInput.nullable().optional(),
-    text_style: z.enum(['normal', 'bold', 'warning']).default('normal')
+    text_style: z.enum(['normal', 'bold', 'warning']).default('normal'),
+    serial_number: optionalText(100),
+    warranty_period: optionalText(100)
 }).superRefine((item, ctx) => {
     if (item.line_type === 'item') {
         if (!item.item_type) ctx.addIssue({ code: 'custom', path: ['item_type'], message: 'กรุณาเลือกประเภทรายการ' });
@@ -275,9 +277,32 @@ const userPasswordResetSchema = z.object({
     password: passwordSchema
 });
 
+const repairTicketCreateSchema = z.object({
+    customer_id: z.coerce.number().int().positive(),
+    ticket_date: dateInput.default(() => new Date().toISOString().slice(0, 10)),
+    device_type: z.string().trim().max(60).default('notebook'),
+    brand_model: z.string().trim().min(1, 'กรุณาระบุยี่ห้อและรุ่น').max(200),
+    serial_number: optionalText(100),
+    passcode: optionalText(100),
+    accessories: optionalText(1000),
+    symptoms: z.string().trim().min(1, 'กรุณาระบุอาการเสีย').max(3000),
+    physical_condition: optionalText(1000),
+    is_subcontract: z.boolean().default(true),
+    subcontract_reason: optionalText(1000),
+    estimated_cost: decimalInput.default(0),
+    deposit_amount: decimalInput.default(0),
+    technician_notes: optionalText(3000),
+    appointment_date: z.union([dateInput, z.literal(''), z.null()]).optional().transform((v) => v || null)
+});
+
+const repairTicketUpdateSchema = repairTicketCreateSchema.partial().extend({
+    status: z.enum(['PENDING', 'SENT_OUT', 'IN_PROGRESS', 'DONE', 'DELIVERED', 'CANCELLED']).optional()
+});
+
 module.exports = {
     loginSchema, idSchema, paginationSchema, masterDataListSchema, customerSchema, productSchema,
     documentCreateSchema, documentUpdateSchema, documentMetadataSchema, documentListSchema, documentStatusSchema,
     documentReasonSchema, sourceQuerySchema, monthSchema, settingsSchema, userCreateSchema,
-    passwordSchema, userPasswordResetSchema, passwordResetRequestSchema, passwordResetConfirmSchema
+    passwordSchema, userPasswordResetSchema, passwordResetRequestSchema, passwordResetConfirmSchema,
+    repairTicketCreateSchema, repairTicketUpdateSchema
 };
