@@ -300,15 +300,43 @@
       </section>
 
       <section id="view-settings" class="view admin-only">
-        <div class="settings-grid">
-          <article class="panel">
-            <div class="panel-header"><div><h2>ตั้งค่าระบบ</h2><p>แยกข้อมูลร้าน การรับชำระเงิน และรูปแบบเอกสารอย่างชัดเจน</p></div></div>
-            <form id="settings-form" class="stack-form compact">
+        <!-- Settings Header & Tab Navigation -->
+        <div class="panel-header settings-main-header">
+          <div>
+            <h2><i data-lucide="settings"></i> ตั้งค่าระบบ</h2>
+            <p>แยกหมวดหมู่การตั้งค่าเป็นงานๆ เพื่อความสะดวก สบายตา และใช้งานง่าย</p>
+          </div>
+        </div>
+
+        <nav class="settings-tab-bar" aria-label="หมวดหมู่การตั้งค่า">
+          <button type="button" class="settings-tab-btn active" data-settings-tab="shop" aria-selected="true">
+            <i data-lucide="store"></i> <span>ข้อมูลร้าน & โลโก้</span>
+          </button>
+          <button type="button" class="settings-tab-btn" data-settings-tab="attachments" aria-selected="false">
+            <i data-lucide="paperclip"></i> <span>เอกสารแนบราชการ</span>
+            <span id="tab-attach-badge" class="settings-tab-badge hidden">⚠️</span>
+          </button>
+          <button type="button" class="settings-tab-btn" data-settings-tab="payment" aria-selected="false">
+            <i data-lucide="landmark"></i> <span>ธนาคาร & เลขเอกสาร</span>
+          </button>
+          <button type="button" class="settings-tab-btn" data-settings-tab="users" aria-selected="false">
+            <i data-lucide="users"></i> <span>ผู้ใช้งานระบบ</span>
+          </button>
+          <button type="button" class="settings-tab-btn" data-settings-tab="system" aria-selected="false">
+            <i data-lucide="sliders-horizontal"></i> <span>การแสดงผล & สำรองข้อมูล</span>
+          </button>
+        </nav>
+
+        <form id="settings-form" class="stack-form compact">
+          <!-- ===== TAB 1: ข้อมูลร้าน & โลโก้ ===== -->
+          <div class="settings-tab-pane active" data-settings-pane="shop">
+            <article class="panel">
+              <div class="panel-header"><div><h2>ข้อมูลร้านค้าและที่อยู่</h2><p>แก้ไขข้อมูลกิจการ ที่อยู่ใหม่เมื่อย้ายที่ทำการ โลโก้ร้าน และลายเซ็น</p></div></div>
               <fieldset class="sub-card settings-section">
                 <legend><i data-lucide="store"></i> ข้อมูลร้าน</legend>
                 <div class="form-grid-2"><label>ชื่อร้านภาษาไทย<input id="setting-shop-th" required></label><label>ชื่อร้านภาษาอังกฤษ<input id="setting-shop-en" required></label></div>
                 <div class="form-grid-2"><label>ชื่อเจ้าของ/ผู้จัดการ<input id="setting-owner"></label><label>เลขผู้เสียภาษี<input id="setting-tax-id"></label></div>
-                <label>ที่อยู่ร้าน<textarea id="setting-address" rows="3"></textarea></label>
+                <label>ที่อยู่ร้าน (แก้ไขได้ทันทีเมื่อย้ายที่ทำการ เพื่อให้แสดงบนบิลถูกต้อง)<textarea id="setting-address" rows="3"></textarea></label>
                 <div class="form-grid-2"><label>โทรศัพท์<input id="setting-phone"></label><label>อีเมล<input id="setting-email" type="email"></label></div>
               </fieldset>
 
@@ -333,7 +361,36 @@
                   </label>
                 </div>
               </fieldset>
+              <div class="settings-action-bar">
+                <button class="btn btn-primary" type="submit"><i data-lucide="save"></i> บันทึกข้อมูลร้านและโลโก้</button>
+              </div>
+            </article>
+          </div>
 
+          <!-- ===== TAB 3: ธนาคาร & เลขเอกสาร ===== -->
+          <div class="settings-tab-pane" data-settings-pane="payment">
+            <article class="panel">
+              <div class="panel-header"><div><h2>ธนาคารและการรับชำระเงิน</h2><p>ระบบแสดง SCB สำหรับลูกค้าเอกชน, KTB สำหรับหน่วยงานราชการ และซ่อนบัญชีสำหรับบุคคลทั่วไป</p></div></div>
+              <fieldset class="sub-card settings-section">
+                <legend><i data-lucide="landmark"></i> บัญชีธนาคาร</legend>
+                <div class="form-grid-2"><label>รายละเอียดบัญชี SCB (ลูกค้าเอกชน)<textarea id="setting-scb" rows="4" placeholder="ธนาคารไทยพาณิชย์
+เลขที่บัญชี ...
+ชื่อบัญชี ..."></textarea></label><label>รายละเอียดบัญชี KTB (หน่วยงานราชการ)<textarea id="setting-ktb" rows="4" placeholder="ธนาคารกรุงไทย
+เลขที่บัญชี ...
+ชื่อบัญชี ..."></textarea></label></div>
+              </fieldset>
+
+              <fieldset class="sub-card settings-section"><legend><i data-lucide="hash"></i> เลขเอกสาร</legend><p class="section-help">ค่าเริ่มต้น: QT001-6906, IN001-6906, BN001-6906, RC001-6906 และ DO001-6906</p><div id="numbering-settings" class="numbering-grid"></div></fieldset>
+              <div class="settings-action-bar">
+                <button class="btn btn-primary" type="submit"><i data-lucide="save"></i> บันทึกธนาคารและเลขเอกสาร</button>
+              </div>
+            </article>
+          </div>
+
+          <!-- ===== TAB 5 (ส่วนตั้งค่าระบบ): การแสดงผลลายวงจร & ฟีเจอร์ ===== -->
+          <div class="settings-tab-pane" data-settings-pane="system">
+            <article class="panel">
+              <div class="panel-header"><div><h2>การแสดงผลและฟีเจอร์ระบบ</h2><p>ปรับแต่งการแสดงผลลายวงจรพื้นหลังและฟังก์ชันเตรียมเปิดใช้งาน</p></div></div>
               <fieldset class="sub-card settings-section appearance-settings">
                 <legend><i data-lucide="circuit-board"></i> การแสดงผลลายวงจร</legend>
                 <p class="section-help">ลายวงจรจะแสดงในทุกหน้าเมนู เปลี่ยนสีตามธีม และไม่แสดงในหน้าพิมพ์หรือกล่อง Modal</p>
@@ -354,110 +411,17 @@
                 </div>
               </fieldset>
 
-              <fieldset class="sub-card settings-section">
-                <legend><i data-lucide="landmark"></i> ธนาคารและการรับชำระเงิน</legend>
-                <p class="section-help">ระบบแสดง SCB สำหรับลูกค้าเอกชน, KTB สำหรับหน่วยงานราชการ และซ่อนบัญชีสำหรับบุคคลทั่วไป บนใบแจ้งหนี้และใบวางบิล</p>
-                <div class="form-grid-2"><label>รายละเอียดบัญชี SCB<textarea id="setting-scb" rows="4" placeholder="ธนาคารไทยพาณิชย์
-เลขที่บัญชี ...
-ชื่อบัญชี ..."></textarea></label><label>รายละเอียดบัญชี KTB<textarea id="setting-ktb" rows="4" placeholder="ธนาคารกรุงไทย
-เลขที่บัญชี ...
-ชื่อบัญชี ..."></textarea></label></div>
-              </fieldset>
-
-              <fieldset class="sub-card settings-section"><legend><i data-lucide="hash"></i> เลขเอกสาร</legend><p class="section-help">ค่าเริ่มต้น: QT001-6906, IN001-6906, BN001-6906, RC001-6906 และ DO001-6906</p><div id="numbering-settings" class="numbering-grid"></div></fieldset>
               <fieldset class="sub-card settings-section"><legend><i data-lucide="toggle-right"></i> ฟีเจอร์เตรียมเปิดภายหลัง</legend><label class="checkbox-row"><input id="feature-realtime" type="checkbox"> Realtime</label><label class="checkbox-row"><input id="feature-auto-backup" type="checkbox"> Backup อัตโนมัติ</label><label class="checkbox-row"><input id="feature-email" type="checkbox"> Email Notification</label></fieldset>
-              <button class="btn btn-primary" type="submit">บันทึกการตั้งค่า</button>
-            </form>
-
-            <!-- ===== เอกสารแนบจัดซื้อจัดจ้างภาครัฐ (แยกจาก form หลัก เพราะ upload ทีละไฟล์) ===== -->
-            <fieldset class="sub-card settings-section" id="attach-docs-section">
-              <legend><i data-lucide="paperclip"></i> เอกสารแนบจัดซื้อจัดจ้างภาครัฐ</legend>
-              <p class="section-help">เอกสารเหล่านี้จะแนบอัตโนมัติเมื่อออกใบเสนอราคา (QT) ให้ <strong>หน่วยงานราชการ</strong> สามารถเลือกแนบเองสำหรับลูกค้าเอกชน</p>
-
-              <!-- แจ้งเตือนหมดอายุ (แสดงเฉพาะเมื่อมีเอกสารที่ใกล้หมดหรือหมดอายุ) -->
-              <div id="attach-expiry-alerts"></div>
-
-              <!-- บัตรประชาชน -->
-              <div class="attach-doc-row" id="attach-row-id-card">
-                <div class="attach-doc-info">
-                  <span class="attach-doc-icon"><i data-lucide="credit-card"></i></span>
-                  <div>
-                    <strong>สำเนาบัตรประจำตัวประชาชน</strong>
-                    <small class="field-help">แนบอัตโนมัติเฉพาะ <em>หน่วยงานราชการ</em> — มีเส้นทะแยงกำกับว่าใช้สำหรับการออกใบเสนอราคากับทางราชการเท่านั้น</small>
-                  </div>
-                  <span id="attach-status-id-card" class="attach-status-badge">กำลังโหลด…</span>
-                </div>
-                <div class="attach-doc-controls">
-                  <label class="attach-expiry-label">วันหมดอายุบัตร: <input type="date" id="attach-expiry-id-card" class="attach-expiry-input"></label>
-                  <label class="btn btn-ghost btn-small attach-upload-btn" for="attach-file-id-card"><i data-lucide="upload"></i> อัปโหลด PDF</label>
-                  <input type="file" id="attach-file-id-card" accept=".pdf,application/pdf" class="visually-hidden" data-attach-type="id-card">
-                  <button type="button" class="btn btn-ghost btn-small" id="attach-preview-id-card" data-attach-type="id-card" disabled><i data-lucide="eye"></i> ดูตัวอย่าง</button>
-                  <button type="button" class="btn btn-ghost btn-small btn-danger-ghost" id="attach-delete-id-card" data-attach-type="id-card" disabled><i data-lucide="trash-2"></i></button>
-                </div>
+              <div class="settings-action-bar">
+                <button class="btn btn-primary" type="submit"><i data-lucide="save"></i> บันทึกการตั้งค่าระบบ</button>
               </div>
+            </article>
+          </div>
+        </form>
 
-              <!-- ทะเบียนพาณิชย์ -->
-              <div class="attach-doc-row" id="attach-row-commercial-reg">
-                <div class="attach-doc-info">
-                  <span class="attach-doc-icon"><i data-lucide="building-2"></i></span>
-                  <div>
-                    <strong>ใบทะเบียนพาณิชย์</strong>
-                    <small class="field-help">แนบได้ทั้งลูกค้าราชการและเอกชน — ที่อยู่อาจเปลี่ยนเมื่อย้ายที่ทำการ ให้อัปโหลดฉบับใหม่เมื่อได้รับ</small>
-                  </div>
-                  <span id="attach-status-commercial-reg" class="attach-status-badge">กำลังโหลด…</span>
-                </div>
-                <div class="attach-doc-controls">
-                  <label class="btn btn-ghost btn-small attach-upload-btn" for="attach-file-commercial-reg"><i data-lucide="upload"></i> อัปโหลด PDF</label>
-                  <input type="file" id="attach-file-commercial-reg" accept=".pdf,application/pdf" class="visually-hidden" data-attach-type="commercial-reg">
-                  <button type="button" class="btn btn-ghost btn-small" id="attach-preview-commercial-reg" data-attach-type="commercial-reg" disabled><i data-lucide="eye"></i> ดูตัวอย่าง</button>
-                  <button type="button" class="btn btn-ghost btn-small btn-danger-ghost" id="attach-delete-commercial-reg" data-attach-type="commercial-reg" disabled><i data-lucide="trash-2"></i></button>
-                </div>
-              </div>
-
-              <!-- SME-GP -->
-              <div class="attach-doc-row" id="attach-row-sme-gp">
-                <div class="attach-doc-info">
-                  <span class="attach-doc-icon"><i data-lucide="award"></i></span>
-                  <div>
-                    <strong>หนังสือรับรองการขึ้นทะเบียน SME-GP</strong>
-                    <small class="field-help">สำหรับการจัดซื้อจัดจ้างภาครัฐ — มีวันหมดอายุ ระบบจะแจ้งเตือนล่วงหน้า 30 วัน</small>
-                  </div>
-                  <span id="attach-status-sme-gp" class="attach-status-badge">กำลังโหลด…</span>
-                </div>
-                <div class="attach-doc-controls">
-                  <label class="attach-expiry-label">วันหมดอายุ: <input type="date" id="attach-expiry-sme-gp" class="attach-expiry-input"></label>
-                  <label class="btn btn-ghost btn-small attach-upload-btn" for="attach-file-sme-gp"><i data-lucide="upload"></i> อัปโหลด PDF</label>
-                  <input type="file" id="attach-file-sme-gp" accept=".pdf,application/pdf" class="visually-hidden" data-attach-type="sme-gp">
-                  <button type="button" class="btn btn-ghost btn-small" id="attach-preview-sme-gp" data-attach-type="sme-gp" disabled><i data-lucide="eye"></i> ดูตัวอย่าง</button>
-                  <button type="button" class="btn btn-ghost btn-small btn-danger-ghost" id="attach-delete-sme-gp" data-attach-type="sme-gp" disabled><i data-lucide="trash-2"></i></button>
-                </div>
-              </div>
-            </fieldset>
-
-          </article>
-          <article class="panel">
-            <div class="panel-header"><div><h2>ผู้ใช้งานระบบ</h2><p>Admin, Staff และ Viewer ตามสิทธิ์เริ่มต้น</p></div></div>
-            <form id="user-form" class="stack-form compact">
-              <label>ชื่อผู้ใช้<input id="new-user-name" required></label>
-              <label>อีเมล<input id="new-user-email" type="email" required></label>
-              <label>รหัสผ่าน
-                <input id="new-user-password" type="password" minlength="8" maxlength="72" autocomplete="new-password" aria-describedby="password-requirements password-error" required>
-                <small class="field-help">อย่างน้อย 8 ตัว มี A-Z, a-z, ตัวเลข และอักขระพิเศษอย่างน้อย 1 ตัว</small>
-              </label>
-              <ul id="password-requirements" class="password-requirements" aria-live="polite">
-                <li data-rule="length">อย่างน้อย 8 ตัวอักษร</li>
-                <li data-rule="uppercase">มีตัวพิมพ์ใหญ่ A-Z</li>
-                <li data-rule="lowercase">มีตัวพิมพ์เล็ก a-z</li>
-                <li data-rule="number">มีตัวเลขอย่างน้อย 1 ตัว</li>
-                <li data-rule="special">มีอักขระพิเศษอย่างน้อย 1 ตัว</li>
-                <li data-rule="allowed">ไม่มีภาษาไทยหรือช่องว่าง</li>
-              </ul>
-              <p id="password-error" class="field-error hidden" role="alert"></p>
-              <label>สิทธิ์<select id="new-user-role"><option value="staff">พนักงาน</option><option value="viewer">ผู้ตรวจสอบ</option><option value="admin">ผู้ดูแลระบบ</option></select></label>
-              <button class="btn btn-secondary" type="submit">เพิ่มผู้ใช้งาน</button>
-            </form>
-            <div class="table-wrap"><table><thead><tr><th>ชื่อ</th><th>อีเมล</th><th>สิทธิ์</th><th>สถานะ</th><th>จัดการ</th></tr></thead><tbody id="users-table"><tr><td colspan="5" class="table-empty">กำลังโหลด...</td></tr></tbody></table></div>
-          </article>
+        <!-- ===== TAB 5 (ส่วนสำรอง & เคลียร์ข้อมูล): อยู่นอก settings-form เพื่อไม่ซ้อน form ===== -->
+        <div class="settings-tab-pane settings-tab-pane-system-tools" data-settings-pane="system">
+          <!-- Backup & Restore -->
           <article id="backup-restore-panel" class="panel admin-only">
             <div class="panel-header"><div><h2><i data-lucide="hard-drive-download"></i> สำรองและกู้คืนข้อมูล</h2><p>สำรองข้อมูลแยกประเภท หรืออัปโหลดไฟล์ backup เพื่อกู้คืน</p></div></div>
             <div class="backup-restore-grid">
@@ -493,6 +457,8 @@
               </fieldset>
             </div>
           </article>
+
+          <!-- เคลียร์ข้อมูลระบบ -->
           <article class="panel danger-panel">
             <div class="panel-header"><div><h2><i data-lucide="shield-alert"></i> เคลียร์ข้อมูลระบบ</h2><p>สำหรับล้างข้อมูลทดสอบหรือข้อมูลค้าง โดยระบบจะดาวน์โหลด Backup ก่อนล้าง</p></div></div>
             <form id="admin-reset-form" class="stack-form compact">
@@ -511,6 +477,108 @@
               </div>
               <button class="btn btn-danger" type="submit"><i data-lucide="trash-2"></i> เคลียร์ข้อมูลระบบ</button>
             </form>
+          </article>
+        </div>
+
+        <!-- ===== TAB 2: เอกสารแนบจัดซื้อจัดจ้างภาครัฐ ===== -->
+        <div class="settings-tab-pane" data-settings-pane="attachments">
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <h2><i data-lucide="paperclip"></i> เอกสารแนบจัดซื้อจัดจ้างภาครัฐ</h2>
+                <p>เอกสารเหล่านี้จะแนบอัตโนมัติเมื่อออกใบเสนอราคา (QT) ให้ <strong>หน่วยงานราชการ (เช่น อบต.ปกาสัย)</strong></p>
+              </div>
+            </div>
+
+            <!-- แจ้งเตือนหมดอายุ (แสดงเฉพาะเมื่อมีเอกสารที่ใกล้หมดหรือหมดอายุ) -->
+            <div id="attach-expiry-alerts"></div>
+
+            <fieldset class="sub-card settings-section" id="attach-docs-section">
+              <legend><i data-lucide="files"></i> รายการเอกสารประจำร้านค้า</legend>
+
+              <!-- บัตรประชาชน -->
+              <div class="attach-doc-row" id="attach-row-id-card">
+                <div class="attach-doc-info">
+                  <span class="attach-doc-icon"><i data-lucide="credit-card"></i></span>
+                  <div>
+                    <strong>สำเนาบัตรประจำตัวประชาชน</strong>
+                    <small class="field-help">แนบอัตโนมัติเฉพาะ <em>หน่วยงานราชการ</em> — พาดเส้นคู่สีน้ำเงินบนบัตรกำกับว่าใช้สำหรับออกใบเสนอราคากับทางราชการเท่านั้น</small>
+                  </div>
+                  <span id="attach-status-id-card" class="attach-status-badge">กำลังโหลด…</span>
+                </div>
+                <div class="attach-doc-controls">
+                  <label class="attach-expiry-label">วันหมดอายุบัตร: <input type="date" id="attach-expiry-id-card" class="attach-expiry-input"></label>
+                  <label class="btn btn-ghost btn-small attach-upload-btn" for="attach-file-id-card"><i data-lucide="upload"></i> อัปโหลด PDF</label>
+                  <input type="file" id="attach-file-id-card" accept=".pdf,application/pdf" class="visually-hidden" data-attach-type="id-card">
+                  <button type="button" class="btn btn-ghost btn-small" id="attach-preview-id-card" data-attach-type="id-card" disabled><i data-lucide="eye"></i> ดูตัวอย่าง</button>
+                  <button type="button" class="btn btn-ghost btn-small btn-danger-ghost" id="attach-delete-id-card" data-attach-type="id-card" disabled><i data-lucide="trash-2"></i></button>
+                </div>
+              </div>
+
+              <!-- ทะเบียนพาณิชย์ -->
+              <div class="attach-doc-row" id="attach-row-commercial-reg">
+                <div class="attach-doc-info">
+                  <span class="attach-doc-icon"><i data-lucide="building-2"></i></span>
+                  <div>
+                    <strong>ใบทะเบียนพาณิชย์ (แสดง 1 แผ่นถ้วน)</strong>
+                    <small class="field-help">แนบได้ทั้งลูกค้าราชการและเอกชน — หากย้ายที่ทำการและได้ใบใหม่ ให้อัปโหลดฉบับใหม่เข้ามาแทนที่</small>
+                  </div>
+                  <span id="attach-status-commercial-reg" class="attach-status-badge">กำลังโหลด…</span>
+                </div>
+                <div class="attach-doc-controls">
+                  <label class="btn btn-ghost btn-small attach-upload-btn" for="attach-file-commercial-reg"><i data-lucide="upload"></i> อัปโหลด PDF</label>
+                  <input type="file" id="attach-file-commercial-reg" accept=".pdf,application/pdf" class="visually-hidden" data-attach-type="commercial-reg">
+                  <button type="button" class="btn btn-ghost btn-small" id="attach-preview-commercial-reg" data-attach-type="commercial-reg" disabled><i data-lucide="eye"></i> ดูตัวอย่าง</button>
+                  <button type="button" class="btn btn-ghost btn-small btn-danger-ghost" id="attach-delete-commercial-reg" data-attach-type="commercial-reg" disabled><i data-lucide="trash-2"></i></button>
+                </div>
+              </div>
+
+              <!-- SME-GP -->
+              <div class="attach-doc-row" id="attach-row-sme-gp">
+                <div class="attach-doc-info">
+                  <span class="attach-doc-icon"><i data-lucide="award"></i></span>
+                  <div>
+                    <strong>หนังสือรับรองการขึ้นทะเบียน SME-GP</strong>
+                    <small class="field-help">สำหรับการจัดซื้อจัดจ้างภาครัฐ — มีวันหมดอายุ ระบบจะแจ้งเตือนล่วงหน้า 30 วัน</small>
+                  </div>
+                  <span id="attach-status-sme-gp" class="attach-status-badge">กำลังโหลด…</span>
+                </div>
+                <div class="attach-doc-controls">
+                  <label class="attach-expiry-label">วันหมดอายุ: <input type="date" id="attach-expiry-sme-gp" class="attach-expiry-input"></label>
+                  <label class="btn btn-ghost btn-small attach-upload-btn" for="attach-file-sme-gp"><i data-lucide="upload"></i> อัปโหลด PDF</label>
+                  <input type="file" id="attach-file-sme-gp" accept=".pdf,application/pdf" class="visually-hidden" data-attach-type="sme-gp">
+                  <button type="button" class="btn btn-ghost btn-small" id="attach-preview-sme-gp" data-attach-type="sme-gp" disabled><i data-lucide="eye"></i> ดูตัวอย่าง</button>
+                  <button type="button" class="btn btn-ghost btn-small btn-danger-ghost" id="attach-delete-sme-gp" data-attach-type="sme-gp" disabled><i data-lucide="trash-2"></i></button>
+                </div>
+              </div>
+            </fieldset>
+          </article>
+        </div>
+
+        <!-- ===== TAB 4: ผู้ใช้งานระบบ ===== -->
+        <div class="settings-tab-pane" data-settings-pane="users">
+          <article class="panel">
+            <div class="panel-header"><div><h2>ผู้ใช้งานระบบ</h2><p>Admin, Staff และ Viewer ตามสิทธิ์เริ่มต้น</p></div></div>
+            <form id="user-form" class="stack-form compact">
+              <label>ชื่อผู้ใช้<input id="new-user-name" required></label>
+              <label>อีเมล<input id="new-user-email" type="email" required></label>
+              <label>รหัสผ่าน
+                <input id="new-user-password" type="password" minlength="8" maxlength="72" autocomplete="new-password" aria-describedby="password-requirements password-error" required>
+                <small class="field-help">อย่างน้อย 8 ตัว มี A-Z, a-z, ตัวเลข และอักขระพิเศษอย่างน้อย 1 ตัว</small>
+              </label>
+              <ul id="password-requirements" class="password-requirements" aria-live="polite">
+                <li data-rule="length">อย่างน้อย 8 ตัวอักษร</li>
+                <li data-rule="uppercase">มีตัวพิมพ์ใหญ่ A-Z</li>
+                <li data-rule="lowercase">มีตัวพิมพ์เล็ก a-z</li>
+                <li data-rule="number">มีตัวเลขอย่างน้อย 1 ตัว</li>
+                <li data-rule="special">มีอักขระพิเศษอย่างน้อย 1 ตัว</li>
+                <li data-rule="allowed">ไม่มีภาษาไทยหรือช่องว่าง</li>
+              </ul>
+              <p id="password-error" class="field-error hidden" role="alert"></p>
+              <label>สิทธิ์<select id="new-user-role"><option value="staff">พนักงาน</option><option value="viewer">ผู้ตรวจสอบ</option><option value="admin">ผู้ดูแลระบบ</option></select></label>
+              <button class="btn btn-secondary" type="submit">เพิ่มผู้ใช้งาน</button>
+            </form>
+            <div class="table-wrap"><table><thead><tr><th>ชื่อ</th><th>อีเมล</th><th>สิทธิ์</th><th>สถานะ</th><th>จัดการ</th></tr></thead><tbody id="users-table"><tr><td colspan="5" class="table-empty">กำลังโหลด...</td></tr></tbody></table></div>
           </article>
         </div>
       </section>

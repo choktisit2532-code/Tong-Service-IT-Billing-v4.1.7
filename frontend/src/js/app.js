@@ -3357,22 +3357,40 @@ async function loadAttachmentMeta() {
 
 function renderAttachExpiryAlerts(data) {
   const container = $('#attach-expiry-alerts');
-  if (!container) return;
-  const alerts = [];
+  const tabBadge  = $('#tab-attach-badge');
+  const alerts    = [];
+  let hasExpired  = false;
+  let hasWarn     = false;
 
   const checkExpiry = (expiryStr, label) => {
     const days = daysUntilExpiry(expiryStr);
     if (days === null) return;
-    if (days < 0)
+    if (days < 0) {
       alerts.push(`<div class="attach-alert attach-alert-expired"><i data-lucide="alert-circle"></i> <strong>${label}</strong> หมดอายุแล้ว ${Math.abs(days)} วันที่ผ่านมา — กรุณาอัปโหลดเอกสารใหม่</div>`);
-    else if (days <= ATTACH_WARN_DAYS)
+      hasExpired = true;
+    } else if (days <= ATTACH_WARN_DAYS) {
       alerts.push(`<div class="attach-alert attach-alert-warn"><i data-lucide="clock"></i> <strong>${label}</strong> จะหมดอายุในอีก <strong>${days} วัน</strong> — กรุณาต่ออายุและอัปโหลดเอกสารใหม่</div>`);
+      hasWarn = true;
+    }
   };
 
   checkExpiry(data.attach_id_card_expiry, 'บัตรประจำตัวประชาชน');
   checkExpiry(data.attach_sme_gp_expiry,  'หนังสือรับรอง SME-GP');
 
-  container.innerHTML = alerts.join('');
+  if (container) container.innerHTML = alerts.join('');
+
+  if (tabBadge) {
+    if (hasExpired) {
+      tabBadge.textContent = 'หมดอายุ';
+      tabBadge.className = 'settings-tab-badge badge-expired';
+    } else if (hasWarn) {
+      tabBadge.textContent = '⚠️ ใกล้หมด';
+      tabBadge.className = 'settings-tab-badge';
+    } else {
+      tabBadge.className = 'settings-tab-badge hidden';
+    }
+  }
+
   refreshIcons();
 }
 
@@ -3488,3 +3506,33 @@ async function checkAttachExpiryForDashboard() {
     refreshIcons();
   } catch { /* silent */ }
 }
+
+// ---- สลับแท็บในหน้าตั้งค่าระบบ (Settings Tabs) ----
+function initSettingsTabs() {
+  const tabBtns = $$('.settings-tab-btn');
+  const panes   = $$('.settings-tab-pane');
+  if (!tabBtns.length) return;
+
+  function activateTab(tabKey) {
+    tabBtns.forEach((btn) => {
+      const active = btn.dataset.settingsTab === tabKey;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    panes.forEach((pane) => {
+      pane.classList.toggle('active', pane.dataset.settingsPane === tabKey);
+    });
+    localStorage.setItem('tong_settings_active_tab', tabKey);
+    refreshIcons();
+  }
+
+  tabBtns.forEach((btn) => {
+    btn.addEventListener('click', () => activateTab(btn.dataset.settingsTab));
+  });
+
+  const saved = localStorage.getItem('tong_settings_active_tab') || 'shop';
+  const isValid = Array.from(tabBtns).some((b) => b.dataset.settingsTab === saved);
+  activateTab(isValid ? saved : 'shop');
+}
+
+initSettingsTabs();
