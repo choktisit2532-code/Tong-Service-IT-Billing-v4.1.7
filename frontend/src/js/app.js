@@ -402,12 +402,13 @@ async function switchView(name) {
 
   try {
     if (name === 'dashboard') await loadDashboard();
+    if (name === 'dashboard') checkAttachExpiryForDashboard();
     if (name === 'documents') await loadDocuments();
     if (name === 'customers') await loadCustomers();
     if (name === 'products') await loadProducts();
     if (name === 'reports') await loadReport();
     if (name === 'audit') await loadAuditLogs();
-    if (name === 'settings') await Promise.all([loadSettings(), loadUsers()]);
+    if (name === 'settings') await Promise.all([loadSettings(), loadUsers(), loadAttachmentMeta()]);
   } catch (error) { showGlobalError(error); }
 }
 
@@ -1162,6 +1163,25 @@ function setWizardStep(step) {
     indicator.classList.toggle('active', indicatorStep === nextStep);
     indicator.classList.toggle('complete', indicatorStep < nextStep);
   });
+
+  const mobileProgress = $('#stepper-progress-fill');
+  const mobileCount = $('#stepper-mobile-count');
+  const mobileTitle = $('#stepper-mobile-title');
+  if (mobileProgress) {
+    mobileProgress.style.width = nextStep === 1 ? '33.3%' : nextStep === 2 ? '66.6%' : '100%';
+  }
+  if (mobileCount) {
+    mobileCount.textContent = `ขั้นตอนที่ ${nextStep} จาก 3`;
+  }
+  if (mobileTitle) {
+    const titles = {
+      1: 'เลือกงานและเอกสารต้นทาง',
+      2: 'รายละเอียดและเงื่อนไข',
+      3: 'ตรวจสอบก่อนบันทึก'
+    };
+    mobileTitle.textContent = titles[nextStep] || '';
+  }
+
   $('#wizard-back').classList.toggle('hidden', nextStep === 1);
   $('#wizard-next').classList.toggle('hidden', nextStep === 3);
   $('#save-document').classList.toggle('hidden', nextStep !== 3);
@@ -2173,6 +2193,12 @@ async function loadSourceDocuments({ preferredSourceId = null } = {}) {
   $('#source-box-title').textContent = title;
   $('#source-box-description').textContent = description;
   box.classList.remove('hidden');
+  $('#source-direct-banner')?.classList.add('hidden');
+  if (targetType === 'BN') {
+    $('#source-documents-clear')?.classList.add('hidden');
+  } else {
+    $('#source-documents-clear')?.classList.remove('hidden');
+  }
   list.innerHTML = '<div class="source-loading"><i data-lucide="loader-circle"></i><span>กำลังโหลดเอกสารต้นทางล่าสุด...</span></div>';
   refreshIcons();
   const result = await request(`/documents/sources?target_type=${targetType}&customer_id=${customerId}`, { cache: 'no-store' });
@@ -2197,6 +2223,7 @@ async function loadSourceDocuments({ preferredSourceId = null } = {}) {
       <strong class="source-amount">${targetType === 'RC' ? `คงเหลือ ${money(documentRow.remaining_total ?? documentRow.grand_total)}` : money(documentRow.grand_total)}</strong>
     </label>`).join('');
   $$('input', list).forEach((input) => input.addEventListener('change', () => {
+    $('#source-direct-banner')?.classList.add('hidden');
     updateSourceDrivenItems();
     updateReceiptBalanceFromSelection();
     updateDocumentPreview();
@@ -2240,13 +2267,15 @@ function validateWizardStep(step) {
     if (!customer || !(allowedTypesByCustomer[customer.customer_type] || []).includes($('#doc-type').value)) {
       return 'ประเภทเอกสารนี้ไม่เหมาะกับลูกค้าที่เลือก';
     }
+    const type = $('#doc-type').value;
+    const sourceCount = selectedSourceInputs().length;
+    if (type === 'BN' && sourceCount === 0) return 'ใบวางบิลต้องเลือกใบแจ้งหนี้อย่างน้อย 1 ใบ';
+    if (type !== 'BN' && sourceCount > 1) return 'เอกสารประเภทนี้เลือกเอกสารต้นทางได้เพียง 1 ใบ';
   }
   if (step === 2) {
     const type = $('#doc-type').value;
     const sourceCount = selectedSourceInputs().length;
     const items = collectDocumentItems();
-    if (type === 'BN' && sourceCount === 0) return 'ใบวางบิลต้องเลือกใบแจ้งหนี้อย่างน้อย 1 ใบ';
-    if (type !== 'BN' && sourceCount > 1) return 'เอกสารประเภทนี้เลือกเอกสารต้นทางได้เพียง 1 ใบ';
     if (sourceCount === 0 && items.length === 0) return 'กรุณาเพิ่มรายการสินค้า/บริการ หรือเลือกเอกสารต้นทาง';
     const emptyItem = items.find((item) => item.line_type === 'item' && (!item.description || Number(item.quantity) <= 0));
     if (emptyItem) return 'กรุณาตรวจรายละเอียดและจำนวนของรายการสินค้า/บริการ';
@@ -2291,6 +2320,13 @@ function renderDocumentReview() {
 
   $('#document-review').innerHTML = `
     <div class="review-grid">
+      <section class="review-card review-total summary-card"><h4><i data-lucide="calculator"></i> ยอดสรุปการเงิน</h4>
+        ${reviewRow('รวมก่อนส่วนลด', $('#preview-subtotal').textContent)}
+        ${reviewRow('ส่วนลด', money($('#doc-discount').value || 0))}
+        ${type === 'RC' && $('#doc-receipt-withholding-enabled').checked ? reviewRow('หัก ณ ที่จ่าย', `-${money($('#doc-receipt-withholding-amount').value || 0)}`) : ''}
+        ${type === 'RC' && Number($('#doc-receipt-transfer-fee').value || 0) > 0 ? reviewRow('ค่าธรรมเนียมโอน', `-${money($('#doc-receipt-transfer-fee').value || 0)}`) : ''}
+        ${reviewRow($('#preview-total-label').textContent, $('#preview-total').textContent, true)}
+      </section>
       <section class="review-card review-primary"><h4><i data-lucide="file-check-2"></i> เอกสาร</h4>
         ${reviewRow('ประเภท', DOC_LABELS[type], true)}
         ${reviewRow('ลูกค้า', customer?.name || originalCustomer?.name || '-')}
@@ -2298,17 +2334,12 @@ function renderDocumentReview() {
         ${['IN', 'BN'].includes(type) ? reviewRow('ครบกำหนด', $('#doc-due-date').value ? dateThai($('#doc-due-date').value) : 'ไม่ระบุ') : ''}
       </section>
       <section class="review-card"><h4><i data-lucide="link-2"></i> ที่มาของข้อมูล</h4>
-        ${reviewRow('เอกสารต้นทาง', sourceNames.length ? sourceNames.join(', ') : 'สร้างรายการใหม่')}
+        ${reviewRow('เอกสารต้นทาง', sourceNames.length ? sourceNames.join(', ') : 'สร้างรายการใหม่ (ไม่มีเอกสารต้นทาง)')}
         ${reviewRow('จำนวนรายการ', sourceNames.length ? `ดึงอัตโนมัติจาก ${sourceNames.length} เอกสาร` : `${items.filter((item) => item.line_type === 'item').length} รายการ`)}
         ${reviewRow('หมายเหตุ', $('#doc-remarks').value || 'ไม่มี')}
         ${reviewRow('ลายเซ็นในเอกสาร', $('#doc-show-signature').checked ? 'แสดงลายเซ็นที่บันทึกไว้' : 'ไม่แสดง / เซ็นด้วยมือ')}
       </section>
       ${receiptDetails}
-      <section class="review-card review-total"><h4><i data-lucide="calculator"></i> ยอดสรุป</h4>
-        ${reviewRow('รวมก่อนส่วนลด', $('#preview-subtotal').textContent)}
-        ${reviewRow('ส่วนลด', money($('#doc-discount').value || 0))}
-        ${reviewRow($('#preview-total-label').textContent, $('#preview-total').textContent, true)}
-      </section>
     </div>`;
   refreshIcons();
 }
@@ -2325,6 +2356,7 @@ $('#wizard-back').addEventListener('click', () => setWizardStep(state.documentWi
 $('#document-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const button = $('#save-document');
+  if (button.disabled || button.classList.contains('is-busy')) return;
   const errorBox = $('#document-form-error');
   errorBox.classList.add('hidden');
   const validationError = validateWizardStep(2);
@@ -2333,7 +2365,10 @@ $('#document-form').addEventListener('submit', async (event) => {
     showDocumentFormError(validationError);
     return;
   }
+  button.disabled = true;
   setBusy(button, true);
+  button.innerHTML = '<i data-lucide="loader-circle" class="spin"></i> กำลังบันทึก...';
+  refreshIcons();
   try {
     const customerId = documentCustomerId();
     if (!customerId) {
@@ -2424,7 +2459,76 @@ $('#document-form').addEventListener('submit', async (event) => {
     showDocumentFormError(`${error.message}${detail}`);
   } finally {
     setBusy(button, false);
+    button.disabled = false;
+    button.innerHTML = '<i data-lucide="save"></i> ' + (state.editingDocumentId ? 'ยืนยันการแก้ไข' : 'ยืนยันและบันทึก');
+    refreshIcons();
   }
+});
+
+// Stepper Click Handlers (allow clicking step 1, 2, 3)
+$$('#document-wizard-steps [data-wizard-indicator]').forEach((indicator) => {
+  indicator.style.cursor = 'pointer';
+  indicator.addEventListener('click', () => {
+    const targetStep = Number(indicator.dataset.wizardIndicator);
+    if (targetStep === state.documentWizardStep) return;
+    if (targetStep > state.documentWizardStep) {
+      const error = validateWizardStep(state.documentWizardStep);
+      if (error) return showDocumentFormError(error);
+      if (targetStep === 3 && state.documentWizardStep < 2) {
+        const error2 = validateWizardStep(2);
+        if (error2) return showDocumentFormError(error2);
+      }
+    }
+    if (targetStep === 3) renderDocumentReview();
+    setWizardStep(targetStep);
+  });
+});
+
+// Keyboard shortcut: Ctrl + Enter / Cmd + Enter
+$('#document-modal').addEventListener('keydown', (event) => {
+  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+    event.preventDefault();
+    if (state.documentWizardStep < 3) {
+      $('#wizard-next')?.click();
+    } else {
+      $('#save-document')?.click();
+    }
+  }
+});
+
+// Quick percentage buttons for receipt payment amount
+$$('#quick-payment-buttons .quick-amount-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const pct = Number(btn.dataset.pct) || 100;
+    const balance = receiptSourceBalance();
+    let baseAmount = 0;
+    if (balance && balance.remaining > 0) {
+      baseAmount = balance.remaining;
+    } else {
+      baseAmount = selectedSourceTotal() || collectDocumentItems().reduce((s, it) => s + (Number(it.line_total) || 0), 0);
+    }
+    if (baseAmount > 0) {
+      const targetAmount = Math.round((baseAmount * (pct / 100)) * 100) / 100;
+      $('#doc-receipt-payment-amount').value = targetAmount.toFixed(2);
+      if (pct === 100) {
+        setReceiptPaymentType('FULL', { syncAmount: false });
+      } else {
+        setReceiptPaymentType('PARTIAL', { syncAmount: false });
+      }
+      updateReceiptBalanceFromSelection();
+      updateDocumentPreview();
+    }
+  });
+});
+
+// Direct document toggle button
+$('#source-documents-clear')?.addEventListener('click', () => {
+  $$('#source-documents-list input:checked').forEach((input) => { input.checked = false; });
+  $('#source-direct-banner')?.classList.remove('hidden');
+  updateSourceDrivenItems();
+  updateReceiptBalanceFromSelection();
+  updateDocumentPreview();
+  showToast('เลือกสร้างเอกสารโดยตรง (สามารถเพิ่มรายการในขั้นตอนถัดไป)', 'info');
 });
 
 
@@ -3176,3 +3280,211 @@ loadInitialData().then(() => {
   if (error.status === 401) { clearToken(); location.replace('./index.html'); }
   else showGlobalError(error);
 });
+
+// ============================================================
+// เอกสารแนบจัดซื้อจัดจ้างภาครัฐ (Attachment Documents)
+// ============================================================
+
+const ATTACH_TYPES_FE = {
+  'id-card':        { label: 'สำเนาบัตรประจำตัวประชาชน',           hasExpiry: true  },
+  'commercial-reg': { label: 'ใบทะเบียนพาณิชย์',                   hasExpiry: false },
+  'sme-gp':         { label: 'หนังสือรับรองการขึ้นทะเบียน SME-GP', hasExpiry: true  }
+};
+const ATTACH_WARN_DAYS = 30; // แจ้งเตือนล่วงหน้า 30 วัน
+
+/** คำนวณจำนวนวันจนถึงวันหมดอายุ */
+function daysUntilExpiry(expiryDateStr) {
+  if (!expiryDateStr) return null;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const expiry = new Date(expiryDateStr); expiry.setHours(0, 0, 0, 0);
+  return Math.round((expiry - today) / 86400000);
+}
+
+/** สถานะเอกสาร → class + ข้อความ */
+function attachExpiryStatus(expiryDateStr) {
+  const days = daysUntilExpiry(expiryDateStr);
+  if (days === null) return { cls: 'attach-ok',      text: 'ไม่มีวันหมดอายุ' };
+  if (days < 0)      return { cls: 'attach-expired', text: `หมดอายุแล้ว (${Math.abs(days)} วันที่ผ่านมา)` };
+  if (days <= ATTACH_WARN_DAYS) return { cls: 'attach-warn', text: `หมดอายุใน ${days} วัน` };
+  return { cls: 'attach-ok', text: `ใช้ได้ถึง ${new Date(expiryDateStr).toLocaleDateString('th-TH', { year:'numeric',month:'long',day:'numeric' })}` };
+}
+
+/** แสดง badge + ปรับปุ่มตามสถานะ */
+function renderAttachRow(type, hasPdf, expiryDate) {
+  const badge   = $(`#attach-status-${type}`);
+  const preview = $(`#attach-preview-${type}`);
+  const del     = $(`#attach-delete-${type}`);
+  const expInput = $(`#attach-expiry-${type}`);
+
+  if (!hasPdf) {
+    badge.className = 'attach-status-badge attach-missing';
+    badge.textContent = 'ยังไม่มีไฟล์';
+    if (preview) preview.disabled = true;
+    if (del) del.disabled = true;
+    return;
+  }
+
+  if (preview) preview.disabled = false;
+  if (del) del.disabled = false;
+
+  if (expiryDate) {
+    const { cls, text } = attachExpiryStatus(expiryDate);
+    badge.className = `attach-status-badge ${cls}`;
+    badge.textContent = text;
+    if (expInput) expInput.value = expiryDate;
+  } else {
+    badge.className = 'attach-status-badge attach-ok';
+    badge.textContent = 'มีไฟล์แล้ว ✓';
+  }
+}
+
+/** โหลด metadata (ไม่โหลด PDF ตัวจริง) */
+async function loadAttachmentMeta() {
+  try {
+    const { data } = await request('/settings/attachments/meta');
+    if (!data) return;
+
+    renderAttachRow('id-card',        data.has_id_card,       data.attach_id_card_expiry);
+    renderAttachRow('commercial-reg', data.has_commercial_reg, null);
+    renderAttachRow('sme-gp',         data.has_sme_gp,        data.attach_sme_gp_expiry);
+
+    // แสดง banner แจ้งเตือนหมดอายุในส่วนบนของ attach section
+    renderAttachExpiryAlerts(data);
+  } catch (err) {
+    console.warn('loadAttachmentMeta error:', err.message);
+  }
+}
+
+function renderAttachExpiryAlerts(data) {
+  const container = $('#attach-expiry-alerts');
+  if (!container) return;
+  const alerts = [];
+
+  const checkExpiry = (expiryStr, label) => {
+    const days = daysUntilExpiry(expiryStr);
+    if (days === null) return;
+    if (days < 0)
+      alerts.push(`<div class="attach-alert attach-alert-expired"><i data-lucide="alert-circle"></i> <strong>${label}</strong> หมดอายุแล้ว ${Math.abs(days)} วันที่ผ่านมา — กรุณาอัปโหลดเอกสารใหม่</div>`);
+    else if (days <= ATTACH_WARN_DAYS)
+      alerts.push(`<div class="attach-alert attach-alert-warn"><i data-lucide="clock"></i> <strong>${label}</strong> จะหมดอายุในอีก <strong>${days} วัน</strong> — กรุณาต่ออายุและอัปโหลดเอกสารใหม่</div>`);
+  };
+
+  checkExpiry(data.attach_id_card_expiry, 'บัตรประจำตัวประชาชน');
+  checkExpiry(data.attach_sme_gp_expiry,  'หนังสือรับรอง SME-GP');
+
+  container.innerHTML = alerts.join('');
+  refreshIcons();
+}
+
+/** อัปโหลด PDF ไปยัง backend */
+async function uploadAttachmentFile(type, file, expiryDate) {
+  const fd = new FormData();
+  fd.append('file', file);
+  if (expiryDate) fd.append('expiry', expiryDate);
+  await request(`/settings/attachment/${type}`, { method: 'POST', body: fd });
+}
+
+/** Event: เลือกไฟล์ → อัปโหลดทันที */
+$$('[data-attach-type]').forEach((input) => {
+  if (input.type !== 'file') return;
+  input.addEventListener('change', async () => {
+    const type    = input.dataset.attachType;
+    const file    = input.files[0];
+    if (!file) return;
+    const expiryInput = $(`#attach-expiry-${type}`);
+    const expiry  = expiryInput ? expiryInput.value : null;
+    const badge   = $(`#attach-status-${type}`);
+    badge.className = 'attach-status-badge';
+    badge.textContent = 'กำลังอัปโหลด…';
+    try {
+      await uploadAttachmentFile(type, file, expiry || null);
+      showToast(`อัปโหลด ${ATTACH_TYPES_FE[type].label} สำเร็จ`);
+      await loadAttachmentMeta();
+    } catch (err) {
+      showGlobalError(err);
+      badge.textContent = 'อัปโหลดไม่สำเร็จ';
+    } finally {
+      input.value = '';
+    }
+  });
+});
+
+/** Event: บันทึกวันหมดอายุ (เมื่อ blur จาก input) */
+$$('.attach-expiry-input').forEach((input) => {
+  input.addEventListener('change', async () => {
+    const type = input.id.replace('attach-expiry-', '');
+    if (!input.value) return;
+    try {
+      await request(`/settings/attachment/${type}/expiry`, {
+        method: 'PUT',
+        body: JSON.stringify({ expiry: input.value })
+      });
+      showToast('บันทึกวันหมดอายุแล้ว');
+      await loadAttachmentMeta();
+    } catch (err) { showGlobalError(err); }
+  });
+});
+
+/** Event: ดูตัวอย่าง PDF */
+$$('[id^="attach-preview-"]').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    const type = btn.dataset.attachType;
+    try {
+      btn.disabled = true;
+      btn.textContent = 'กำลังโหลด…';
+      const { data } = await request(`/settings/attachment/${type}`);
+      if (!data) return showToast('ไม่พบไฟล์');
+      // เปิด base64 PDF ใน tab ใหม่
+      const byteStr = atob(data.split(',')[1]);
+      const bytes   = new Uint8Array(byteStr.length).map((_, i) => byteStr.charCodeAt(i));
+      const blob    = new Blob([bytes], { type: 'application/pdf' });
+      window.open(URL.createObjectURL(blob), '_blank');
+    } catch (err) { showGlobalError(err); }
+    finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i data-lucide="eye"></i> ดูตัวอย่าง';
+      refreshIcons();
+    }
+  });
+});
+
+/** Event: ลบเอกสาร */
+$$('[id^="attach-delete-"]').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    const type  = btn.dataset.attachType;
+    const label = ATTACH_TYPES_FE[type]?.label || type;
+    if (!confirm(`ลบ ${label} ออกจากระบบ?`)) return;
+    try {
+      await request(`/settings/attachment/${type}`, { method: 'DELETE' });
+      showToast(`ลบ ${label} แล้ว`);
+      await loadAttachmentMeta();
+    } catch (err) { showGlobalError(err); }
+  });
+});
+
+// ---- แจ้งเตือนหมดอายุบน Dashboard (แสดงทุกครั้งที่โหลด) ----
+async function checkAttachExpiryForDashboard() {
+  try {
+    const { data } = await request('/settings/attachments/meta');
+    if (!data) return;
+    const notices = [];
+    const check = (expiryStr, label) => {
+      const days = daysUntilExpiry(expiryStr);
+      if (days === null) return;
+      if (days < 0) notices.push({ label, days, expired: true });
+      else if (days <= ATTACH_WARN_DAYS) notices.push({ label, days, expired: false });
+    };
+    check(data.attach_id_card_expiry, 'บัตรประจำตัวประชาชน');
+    check(data.attach_sme_gp_expiry, 'หนังสือรับรอง SME-GP');
+
+    const container = $('#dashboard-attach-alerts');
+    if (!container || notices.length === 0) return;
+    container.innerHTML = notices.map((n) =>
+      n.expired
+        ? `<div class="attach-alert attach-alert-expired"><i data-lucide="alert-circle"></i> <strong>${n.label}</strong> หมดอายุแล้ว — กรุณาไปที่ ตั้งค่าระบบ → อัปโหลดเอกสารใหม่</div>`
+        : `<div class="attach-alert attach-alert-warn"><i data-lucide="clock"></i> <strong>${n.label}</strong> จะหมดอายุในอีก <strong>${n.days} วัน</strong></div>`
+    ).join('');
+    container.classList.remove('hidden');
+    refreshIcons();
+  } catch { /* silent */ }
+}

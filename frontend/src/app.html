@@ -117,6 +117,8 @@
       <div id="global-alert" class="alert hidden"></div>
 
       <section id="view-dashboard" class="view active">
+        <!-- แจ้งเตือนหมดอายุเอกสารแนบ (ซ่อนถ้าไม่มีการแจ้งเตือน) -->
+        <div id="dashboard-attach-alerts" class="hidden"></div>
         <div class="stats-grid">
           <article class="stat-card"><span class="stat-icon success"><i data-lucide="circle-dollar-sign"></i></span><div><small>รายได้จริงเดือนนี้</small><strong id="stat-income">฿0.00</strong><span>ยอดสุทธิจากใบเสร็จ</span></div></article>
           <article class="stat-card"><span class="stat-icon warning"><i data-lucide="hourglass"></i></span><div><small>ยอดค้างรับทั้งหมด</small><strong id="stat-outstanding">฿0.00</strong><span>ใบแจ้งหนี้และใบวางบิล</span></div></article>
@@ -366,6 +368,72 @@
               <fieldset class="sub-card settings-section"><legend><i data-lucide="toggle-right"></i> ฟีเจอร์เตรียมเปิดภายหลัง</legend><label class="checkbox-row"><input id="feature-realtime" type="checkbox"> Realtime</label><label class="checkbox-row"><input id="feature-auto-backup" type="checkbox"> Backup อัตโนมัติ</label><label class="checkbox-row"><input id="feature-email" type="checkbox"> Email Notification</label></fieldset>
               <button class="btn btn-primary" type="submit">บันทึกการตั้งค่า</button>
             </form>
+
+            <!-- ===== เอกสารแนบจัดซื้อจัดจ้างภาครัฐ (แยกจาก form หลัก เพราะ upload ทีละไฟล์) ===== -->
+            <fieldset class="sub-card settings-section" id="attach-docs-section">
+              <legend><i data-lucide="paperclip"></i> เอกสารแนบจัดซื้อจัดจ้างภาครัฐ</legend>
+              <p class="section-help">เอกสารเหล่านี้จะแนบอัตโนมัติเมื่อออกใบเสนอราคา (QT) ให้ <strong>หน่วยงานราชการ</strong> สามารถเลือกแนบเองสำหรับลูกค้าเอกชน</p>
+
+              <!-- แจ้งเตือนหมดอายุ (แสดงเฉพาะเมื่อมีเอกสารที่ใกล้หมดหรือหมดอายุ) -->
+              <div id="attach-expiry-alerts"></div>
+
+              <!-- บัตรประชาชน -->
+              <div class="attach-doc-row" id="attach-row-id-card">
+                <div class="attach-doc-info">
+                  <span class="attach-doc-icon"><i data-lucide="credit-card"></i></span>
+                  <div>
+                    <strong>สำเนาบัตรประจำตัวประชาชน</strong>
+                    <small class="field-help">แนบอัตโนมัติเฉพาะ <em>หน่วยงานราชการ</em> — มีเส้นทะแยงกำกับว่าใช้สำหรับการออกใบเสนอราคากับทางราชการเท่านั้น</small>
+                  </div>
+                  <span id="attach-status-id-card" class="attach-status-badge">กำลังโหลด…</span>
+                </div>
+                <div class="attach-doc-controls">
+                  <label class="attach-expiry-label">วันหมดอายุบัตร: <input type="date" id="attach-expiry-id-card" class="attach-expiry-input"></label>
+                  <label class="btn btn-ghost btn-small attach-upload-btn" for="attach-file-id-card"><i data-lucide="upload"></i> อัปโหลด PDF</label>
+                  <input type="file" id="attach-file-id-card" accept=".pdf,application/pdf" class="visually-hidden" data-attach-type="id-card">
+                  <button type="button" class="btn btn-ghost btn-small" id="attach-preview-id-card" data-attach-type="id-card" disabled><i data-lucide="eye"></i> ดูตัวอย่าง</button>
+                  <button type="button" class="btn btn-ghost btn-small btn-danger-ghost" id="attach-delete-id-card" data-attach-type="id-card" disabled><i data-lucide="trash-2"></i></button>
+                </div>
+              </div>
+
+              <!-- ทะเบียนพาณิชย์ -->
+              <div class="attach-doc-row" id="attach-row-commercial-reg">
+                <div class="attach-doc-info">
+                  <span class="attach-doc-icon"><i data-lucide="building-2"></i></span>
+                  <div>
+                    <strong>ใบทะเบียนพาณิชย์</strong>
+                    <small class="field-help">แนบได้ทั้งลูกค้าราชการและเอกชน — ที่อยู่อาจเปลี่ยนเมื่อย้ายที่ทำการ ให้อัปโหลดฉบับใหม่เมื่อได้รับ</small>
+                  </div>
+                  <span id="attach-status-commercial-reg" class="attach-status-badge">กำลังโหลด…</span>
+                </div>
+                <div class="attach-doc-controls">
+                  <label class="btn btn-ghost btn-small attach-upload-btn" for="attach-file-commercial-reg"><i data-lucide="upload"></i> อัปโหลด PDF</label>
+                  <input type="file" id="attach-file-commercial-reg" accept=".pdf,application/pdf" class="visually-hidden" data-attach-type="commercial-reg">
+                  <button type="button" class="btn btn-ghost btn-small" id="attach-preview-commercial-reg" data-attach-type="commercial-reg" disabled><i data-lucide="eye"></i> ดูตัวอย่าง</button>
+                  <button type="button" class="btn btn-ghost btn-small btn-danger-ghost" id="attach-delete-commercial-reg" data-attach-type="commercial-reg" disabled><i data-lucide="trash-2"></i></button>
+                </div>
+              </div>
+
+              <!-- SME-GP -->
+              <div class="attach-doc-row" id="attach-row-sme-gp">
+                <div class="attach-doc-info">
+                  <span class="attach-doc-icon"><i data-lucide="award"></i></span>
+                  <div>
+                    <strong>หนังสือรับรองการขึ้นทะเบียน SME-GP</strong>
+                    <small class="field-help">สำหรับการจัดซื้อจัดจ้างภาครัฐ — มีวันหมดอายุ ระบบจะแจ้งเตือนล่วงหน้า 30 วัน</small>
+                  </div>
+                  <span id="attach-status-sme-gp" class="attach-status-badge">กำลังโหลด…</span>
+                </div>
+                <div class="attach-doc-controls">
+                  <label class="attach-expiry-label">วันหมดอายุ: <input type="date" id="attach-expiry-sme-gp" class="attach-expiry-input"></label>
+                  <label class="btn btn-ghost btn-small attach-upload-btn" for="attach-file-sme-gp"><i data-lucide="upload"></i> อัปโหลด PDF</label>
+                  <input type="file" id="attach-file-sme-gp" accept=".pdf,application/pdf" class="visually-hidden" data-attach-type="sme-gp">
+                  <button type="button" class="btn btn-ghost btn-small" id="attach-preview-sme-gp" data-attach-type="sme-gp" disabled><i data-lucide="eye"></i> ดูตัวอย่าง</button>
+                  <button type="button" class="btn btn-ghost btn-small btn-danger-ghost" id="attach-delete-sme-gp" data-attach-type="sme-gp" disabled><i data-lucide="trash-2"></i></button>
+                </div>
+              </div>
+            </fieldset>
+
           </article>
           <article class="panel">
             <div class="panel-header"><div><h2>ผู้ใช้งานระบบ</h2><p>Admin, Staff และ Viewer ตามสิทธิ์เริ่มต้น</p></div></div>
@@ -461,10 +529,22 @@
         <button class="icon-button" data-close-document aria-label="ปิด"><i data-lucide="x"></i></button>
       </div>
 
+      <!-- Mobile Stepper Indicator -->
+      <div id="stepper-mobile" class="stepper-mobile" aria-label="สถานะขั้นตอน">
+        <div class="stepper-progress">
+          <div id="stepper-progress-fill" class="progress-fill" style="width: 33.3%"></div>
+        </div>
+        <div class="step-info">
+          <span id="stepper-mobile-count" class="step-count">ขั้นตอนที่ 1 จาก 3</span>
+          <span id="stepper-mobile-title" class="step-title">เลือกงานและเอกสารต้นทาง</span>
+        </div>
+      </div>
+
+      <!-- Desktop Stepper Indicator -->
       <ol id="document-wizard-steps" class="wizard-steps" aria-label="ขั้นตอนสร้างเอกสาร">
-        <li class="active" data-wizard-indicator="1"><span>1</span><div><strong>เลือกงาน</strong><small>เอกสารและลูกค้า</small></div></li>
-        <li data-wizard-indicator="2"><span>2</span><div><strong>รายละเอียด</strong><small>รายการและเงื่อนไข</small></div></li>
-        <li data-wizard-indicator="3"><span>3</span><div><strong>ตรวจสอบ</strong><small>ยืนยันก่อนบันทึก</small></div></li>
+        <li class="active" data-wizard-indicator="1"><span>1</span><div><strong>เลือกลูกค้า & ต้นทาง</strong><small id="wizard-ind-desc-1">ลูกค้าและเอกสารอ้างอิง</small></div></li>
+        <li data-wizard-indicator="2"><span>2</span><div><strong>รายละเอียด</strong><small id="wizard-ind-desc-2">รายการและเงื่อนไข</small></div></li>
+        <li data-wizard-indicator="3"><span>3</span><div><strong>ตรวจสอบ</strong><small id="wizard-ind-desc-3">ยืนยันก่อนบันทึก</small></div></li>
       </ol>
 
       <form id="document-form" novalidate>
@@ -472,7 +552,7 @@
 
         <section class="wizard-panel active" data-wizard-step="1">
           <div class="wizard-section-heading">
-            <div><span class="step-kicker">ขั้นที่ 1</span><h3>เลือกลูกค้าและประเภทเอกสาร</h3><p>เลือกลูกค้าก่อน เพื่อให้ระบบแนะนำประเภทเอกสารที่เหมาะสม</p></div>
+            <div><span class="step-kicker">ขั้นที่ 1</span><h3>เลือกลูกค้าและเอกสารต้นทาง</h3><p>เลือกลูกค้าและเอกสารอ้างอิง (หรือเลือกสร้างเอกสารโดยตรง)</p></div>
           </div>
 
           <div class="friendly-form-card">
@@ -517,17 +597,28 @@
             </button>
           </div>
 
+          <div id="source-documents-box" class="source-box hidden">
+            <div class="source-box-heading">
+              <div><strong id="source-box-title">เลือกเอกสารต้นทาง</strong><span id="source-box-description">ระบบจะดึงลูกค้า รายการ และยอดให้อัตโนมัติ</span></div>
+              <div class="source-box-actions">
+                <span class="source-badge"><i data-lucide="link-2"></i> เชื่อมเอกสาร</span>
+                <button id="source-documents-refresh" class="btn btn-ghost btn-small" type="button"><i data-lucide="refresh-cw"></i> โหลดใหม่</button>
+                <button id="source-documents-clear" class="btn btn-ghost btn-small" type="button"><i data-lucide="sparkles"></i> สร้างรายการเอง (ไม่อ้างอิง)</button>
+              </div>
+            </div>
+            <div id="source-direct-banner" class="source-direct-banner hidden">
+              <i data-lucide="info"></i>
+              <span>กำลังเลือก <strong>สร้างเอกสารโดยตรง (ไม่อ้างอิงเอกสารเดิม)</strong> — คุณสามารถกรอกรายการสินค้าเองในขั้นตอนถัดไป</span>
+            </div>
+            <div id="source-documents-list" class="source-list source-list-grid"></div>
+            <div id="source-empty-help" class="empty-help hidden"><i data-lucide="inbox"></i><span id="source-empty-message">ยังไม่มีเอกสารต้นทางที่พร้อมใช้งาน</span></div>
+          </div>
+
         </section>
 
         <section class="wizard-panel" data-wizard-step="2">
           <div class="wizard-section-heading compact-heading">
-            <div><span class="step-kicker">ขั้นที่ 2</span><h3 id="wizard-details-title">กรอกรายละเอียดเอกสาร</h3><p id="wizard-details-description">เพิ่มรายการสินค้าและบริการเฉพาะที่จำเป็น</p></div>
-          </div>
-
-          <div id="source-documents-box" class="source-box hidden">
-            <div class="source-box-heading"><div><strong id="source-box-title">เลือกเอกสารต้นทาง</strong><span id="source-box-description">ระบบจะดึงลูกค้า รายการ และยอดให้อัตโนมัติ</span></div><div class="source-box-actions"><span class="source-badge"><i data-lucide="link-2"></i> เชื่อมเอกสาร</span><button id="source-documents-refresh" class="btn btn-ghost btn-small" type="button"><i data-lucide="refresh-cw"></i> โหลดใหม่</button></div></div>
-            <div id="source-documents-list" class="source-list source-list-grid"></div>
-            <div id="source-empty-help" class="empty-help hidden"><i data-lucide="inbox"></i><span id="source-empty-message">ยังไม่มีเอกสารต้นทางที่พร้อมใช้งาน</span></div>
+            <div><span class="step-kicker">ขั้นที่ 2</span><h3 id="wizard-details-title">กรอกรายละเอียดเอกสาร</h3><p id="wizard-details-description">เพิ่มรายการสินค้า บริการ และเงื่อนไขทางการเงิน</p></div>
           </div>
 
           <section id="receipt-payment-box" class="receipt-payment-box hidden">
@@ -551,6 +642,12 @@
                   <label>งวดปัจจุบัน<input id="doc-installment-number" type="number" min="1" step="1" placeholder="เช่น 1"></label>
                   <label>จำนวนงวดทั้งหมด<input id="doc-installment-count" type="number" min="1" step="1" placeholder="เช่น 3"></label>
                 </div>
+              </div>
+              <div class="quick-payment-buttons" id="quick-payment-buttons">
+                <span class="quick-buttons-label">ปุ่มลัด:</span>
+                <button type="button" class="btn btn-ghost btn-small quick-amount-btn" data-pct="25">25%</button>
+                <button type="button" class="btn btn-ghost btn-small quick-amount-btn" data-pct="50">50%</button>
+                <button type="button" class="btn btn-ghost btn-small quick-amount-btn" data-pct="100">เต็มจำนวน (100%)</button>
               </div>
               <div id="receipt-installment-warning" class="inline-warning hidden"><i data-lucide="triangle-alert"></i><span></span></div>
             </fieldset>

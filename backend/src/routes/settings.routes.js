@@ -11,6 +11,14 @@ const logger = require('../utils/logger');
 
 const router = express.Router();
 
+// ---- Attachment document constants ----
+const ATTACH_TYPES = {
+    'id-card':         { col: 'attach_id_card_data',        expiryCol: 'attach_id_card_expiry',  hasExpiry: true  },
+    'commercial-reg':  { col: 'attach_commercial_reg_data', expiryCol: null,                     hasExpiry: false },
+    'sme-gp':          { col: 'attach_sme_gp_data',         expiryCol: 'attach_sme_gp_expiry',   hasExpiry: true  }
+};
+const PDF_MAX_SIZE = 10 * 1024 * 1024; // 10 MB
+
 router.get('/public-branding', asyncHandler(async (_req, res) => {
     res.set('Cache-Control', 'no-store');
     try {
@@ -106,5 +114,107 @@ router.put('/', authorize('settings.update'), validate(settingsSchema), asyncHan
     );
     res.json({ data: result.rows[0] });
 }));
+
+// ---- PDF upload middleware ----
+const uploadPdf = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: PDF_MAX_SIZE, files: 1 },
+    fileFilter(_req, file, callback) {
+        if (file.mimetype !== 'application/pdf') {
+            return callback(new AppError(400, 'รองรับเฉพาะไฟล์ PDF', 'INVALID_FILE_TYPE'));
+        }
+        callback(null, true);
+    }
+});
+
+function isPdfBuffer(buf) {
+    return buf && buf.length >= 4 && buf.subarray(0, 4).toString('ascii') === '%PDF';
+}
+
+// GET /api/settings/attachment/:type — ส่งคืน base64 PDF
+router.get('/attachment/:type', authenticate, asyncHandler(async (req, res) => {
+    const info = ATTACH_TYPES[req.params.type];
+    if (!info) throw new AppError(404, 'ไม่พบประเภทเอกสาร', 'NOT_FOUND');
+    const result = await pool.query(`SELECT ${info.col} AS data FROM settings WHERE id=1`);
+    const data = result.rows[0]?.data || null;
+    res.set('Cache-Control', 'no-store');
+    return res.json({ data });
+}));
+
+// GET /api/settings/attachments/meta — ส่งคืน metadata (ไม่รวม PDF data) + สถานะหมดอายุ
+router.get('/attachments/meta', authenticate, asyncHandler(async (_req, res) => {
+    const result = await pool.query(`
+        SELECT
+          CASE WHEN attach_id_card_data IS NOT NULL THEN TRUE ELSE FALSE END        AS has_id_card,
+          attach_id_card_expiry,
+          CASE WHEN attach_commercial_reg_data IS NOT NULL THEN TRUE ELSE FALSE END AS has_commercial_reg,
+          CASE WHEN attach_sme_gp_data IS NOT NULL THEN TRUE ELSE FALSE END         AS has_sme_gp,
+          attach_sme_gp_expiry
+        FROM settings WHERE id=1
+    `);
+    res.set('Cache-Control', 'no-store');
+    res.json({ data: result.rows[0] || null });
+}));
+
+// POST /api/settings/attachment/:type — อัปโหลด PDF
+router.post('/attachment/:type',
+    authenticate,
+    authorize('settings.update'),
+    uploadPdf.single('file'),
+    asyncHandler(async (req, res) => {
+        const info = ATTACH_TYPES[req.params.type];
+        if (!info) throw new AppError(404, 'ไม่พบประเภทเอกสาร', 'NOT_FOUND');
+        if (!req.file) throw new AppError(400, 'กรุณาเลือกไฟล์ PDF', 'FILE_REQUIRED');
+        if (!isPdfBuffer(req.file.buffer)) throw new AppError(400, 'ไฟล์ไม่ใช่ PDF ที่ถูกต้อง', 'INVALID_PDF');
+
+        const base64 = `data:application/pdf;base64,${req.file.buffer.toString('base64')}`;
+
+        // อัปเดต expiry ถ้ามีส่งมา
+        let query, params;
+        if (info.hasExpiry && req.body.expiry) {
+            const expiryDate = req.body.expiry; // YYYY-MM-DD
+            query = `UPDATE settings SET ${info.col}=$1, ${info.expiryCol}=$2 WHERE id=1`;
+            params = [base64, expiryDate];
+        } else {
+            query = `UPDATE settings SET ${info.col}=$1 WHERE id=1`;
+            params = [base64];
+        }
+        await pool.query(query, params);
+        logger.info('settings.attachment_uploaded', { type: req.params.type });
+        res.set('Cache-Control', 'no-store');
+        res.json({ success: true });
+    })
+);
+
+// PUT /api/settings/attachment/:type/expiry — อัปเดตวันหมดอายุอย่างเดียว
+router.put('/attachment/:type/expiry',
+    authenticate,
+    authorize('settings.update'),
+    asyncHandler(async (req, res) => {
+        const info = ATTACH_TYPES[req.params.type];
+        if (!info || !info.hasExpiry) throw new AppError(404, 'ไม่พบประเภทเอกสารหรือไม่มีวันหมดอายุ', 'NOT_FOUND');
+        const { expiry } = req.body;
+        if (!expiry || !/^\d{4}-\d{2}-\d{2}$/.test(expiry)) {
+            throw new AppError(400, 'รูปแบบวันหมดอายุไม่ถูกต้อง (YYYY-MM-DD)', 'INVALID_DATE');
+        }
+        await pool.query(`UPDATE settings SET ${info.expiryCol}=$1 WHERE id=1`, [expiry]);
+        res.json({ success: true });
+    })
+);
+
+// DELETE /api/settings/attachment/:type — ลบเอกสาร
+router.delete('/attachment/:type',
+    authenticate,
+    authorize('settings.update'),
+    asyncHandler(async (req, res) => {
+        const info = ATTACH_TYPES[req.params.type];
+        if (!info) throw new AppError(404, 'ไม่พบประเภทเอกสาร', 'NOT_FOUND');
+        const cols = info.hasExpiry
+            ? `${info.col}=NULL, ${info.expiryCol}=NULL`
+            : `${info.col}=NULL`;
+        await pool.query(`UPDATE settings SET ${cols} WHERE id=1`);
+        res.json({ success: true });
+    })
+);
 
 module.exports = router;

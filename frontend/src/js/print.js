@@ -11,7 +11,83 @@ const printModeSelect = document.getElementById('print-mode-select');
 const printDateSelect = document.getElementById('print-date-select');
 const printButton = document.getElementById('print-button');
 const excelButton = document.getElementById('excel-button');
+const attachPanel = document.getElementById('attach-panel');
 let currentDocument = null;
+
+// ============================================================
+// Attachment (เอกสารแนบ) state
+// ============================================================
+const ATTACH_WARN_DAYS_PRINT = 30;
+let attachMeta = null; // metadata จาก /settings/attachments/meta
+
+function daysUntilExpiry(expiryStr) {
+  if (!expiryStr) return null;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const exp   = new Date(expiryStr); exp.setHours(0,0,0,0);
+  return Math.round((exp - today) / 86400000);
+}
+
+/** โหลด attachment metadata (ไม่โหลด PDF ใหญ่) */
+async function loadAttachMeta() {
+  try {
+    const res = await request('/settings/attachments/meta');
+    attachMeta = res.data;
+    setupAttachPanel();
+  } catch { /* silent — ใช้งานได้แม้ไม่มี attachment */ }
+}
+
+/** ตั้งค่า checkbox panel และ auto-check ตามประเภทลูกค้า */
+function setupAttachPanel() {
+  if (!currentDocument || currentDocument.document_type !== 'QT' || !attachPanel) return;
+  attachPanel.classList.remove('hidden');
+
+  const isGov = currentDocument.customer_type === 'government';
+  const cbTypes = ['id-card', 'commercial-reg', 'sme-gp'];
+
+  cbTypes.forEach((type) => {
+    const cb      = document.getElementById(`attach-cb-${type}`);
+    const warn    = document.getElementById(`attach-warn-${type}`);
+    const lbl     = document.getElementById(`attach-label-${type}`);
+    if (!cb) return;
+
+    // ตรวจสอบว่ามีไฟล์ใน DB ไหม
+    const hasFile = type === 'id-card'       ? attachMeta?.has_id_card
+                  : type === 'commercial-reg' ? attachMeta?.has_commercial_reg
+                  : attachMeta?.has_sme_gp;
+
+    if (!hasFile) {
+      cb.disabled = true;
+      lbl.title = 'ยังไม่มีไฟล์ — กรุณาอัปโหลดในหน้าตั้งค่าระบบ';
+      lbl.style.opacity = '0.5';
+      return;
+    }
+
+    // แจ้งเตือนหมดอายุ
+    const expiryStr = type === 'id-card' ? attachMeta?.attach_id_card_expiry
+                    : type === 'sme-gp'  ? attachMeta?.attach_sme_gp_expiry
+                    : null;
+    if (warn && expiryStr) {
+      const days = daysUntilExpiry(expiryStr);
+      if (days !== null && days < 0) {
+        warn.classList.remove('hidden');
+        warn.title = `หมดอายุแล้ว ${Math.abs(days)} วันที่ผ่านมา`;
+      } else if (days !== null && days <= ATTACH_WARN_DAYS_PRINT) {
+        warn.classList.remove('hidden');
+        warn.textContent = `⚠️ เหลือ ${days} วัน`;
+        warn.title = `ใกล้หมดอายุ`;
+      }
+    }
+
+    // auto-check สำหรับราชการ
+    cb.checked = isGov;
+
+    // เมื่อเปลี่ยน checkbox → re-render หน้าแนบเอกสาร
+    cb.addEventListener('change', () => renderAttachPages());
+  });
+
+  // render หน้าแนบทันที (กรณีราชการ)
+  if (isGov) renderAttachPages();
+}
 
 function statusWatermark(doc) {
   const map = { DRAFT: 'ฉบับร่าง', CANCELLED: 'ยกเลิก', PAID: 'ชำระแล้ว', REJECTED: 'ไม่อนุมัติ' };
@@ -363,9 +439,178 @@ async function render() {
   currentDocument = doc;
   document.title = `${doc.document_number} | ${DOC_LABELS[doc.document_type]}`;
   renderPages(doc);
+  // โหลด attachment meta (ถ้าเป็น QT)
+  if (doc.document_type === 'QT') await loadAttachMeta();
 }
 
 render().catch((error) => {
   root.innerHTML = `<section class="a4-sheet"><p style="color:#b91c1c">${escapeHtml(error.message)}</p></section>`;
   pageCount.textContent = 'โหลดเอกสารไม่สำเร็จ';
 });
+
+// ============================================================
+// Attachment PDF rendering (ใช้ PDF.js render เป็น canvas)
+// ============================================================
+
+/** แปลง base64 data URL → Uint8Array */
+function base64ToUint8Array(dataUrl) {
+  const base64 = dataUrl.split(',')[1];
+  const binary  = atob(base64);
+  const arr     = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
+  return arr;
+}
+
+/**
+ * Render หน้า PDF เป็น canvas แล้วเพิ่ม overlay:
+ *   - สำเนาถูกต้อง + เส้น ....... (ทุกเอกสาร)
+ *   - เส้นทะแยงสีน้ำเงิน + ข้อความ (เฉพาะบัตรประชาชน — พาดบนบัตรเท่านั้น)
+ */
+async function renderPdfPageToCanvas(pdfDoc, pageNum, attachType) {
+  const page     = await pdfDoc.getPage(pageNum);
+  // A4 ที่ 96 DPI = 794 x 1123 px; แต่ให้ scale ตาม viewport ของ PDF
+  const A4_W     = 794;
+  const viewport = page.getViewport({ scale: 1 });
+  const scale    = A4_W / viewport.width;
+  const scaledVP = page.getViewport({ scale });
+
+  const canvas  = document.createElement('canvas');
+  canvas.width  = scaledVP.width;
+  canvas.height = scaledVP.height;
+  const ctx     = canvas.getContext('2d');
+
+  await page.render({ canvasContext: ctx, viewport: scaledVP }).promise;
+
+  // ---- overlay: เส้นทะแยงสีน้ำเงิน (เฉพาะบัตรประชาชน — พาดบนพื้นที่บัตรเท่านั้น) ----
+  if (attachType === 'id-card') {
+    // สมมติบัตรอยู่ตรงกลางหน้า A4 — วัดพื้นที่บัตรแบบ proportional
+    // บัตรประชาชน ID85 ขนาด 85.6×54 mm; บน A4 (210×297 mm) → ประมาณ 40% ของความกว้าง
+    const cW   = scaledVP.width;
+    const cH   = scaledVP.height;
+
+    // พื้นที่บัตร (ตรงกลาง, ประมาณ 55% ความกว้าง, 25% ความสูง จากตำแหน่ง 15% ของหน้า)
+    const cardX = cW * 0.09;
+    const cardY = cH * 0.11;
+    const cardW = cW * 0.82;
+    const cardH = cH * 0.35;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(cardX, cardY, cardW, cardH);
+    ctx.clip(); // จำกัดการวาดภายในพื้นที่บัตรเท่านั้น
+
+    // วาดเส้นทะแยงหลายเส้น (diagonal lines)
+    ctx.strokeStyle = 'rgba(0, 80, 200, 0.18)';
+    ctx.lineWidth   = 1.5;
+    const step = 28;
+    for (let offset = -cardH; offset < cardW + cardH; offset += step) {
+      ctx.beginPath();
+      ctx.moveTo(cardX + offset, cardY);
+      ctx.lineTo(cardX + offset - cardH, cardY + cardH);
+      ctx.stroke();
+    }
+
+    // ข้อความกำกับ (ทะแยงกลาง)
+    const textX = cardX + cardW / 2;
+    const textY = cardY + cardH / 2;
+    ctx.translate(textX, textY);
+    ctx.rotate(-Math.atan2(cardH, cardW)); // มุมเดียวกับเส้นทะแยง
+    ctx.font      = `bold ${Math.round(cW * 0.022)}px 'Sarabun', sans-serif`;
+    ctx.fillStyle = 'rgba(0, 60, 180, 0.72)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('ใช้สำหรับการออกใบเสนอราคา', 0, -Math.round(cW * 0.013));
+    ctx.fillText('กับทางราชการเท่านั้น', 0, Math.round(cW * 0.013));
+    ctx.restore();
+  }
+
+  // ---- overlay: "สำเนาถูกต้อง" + เส้นประ (ทุกเอกสาร — มุมล่างขวา) ----
+  const cW2   = scaledVP.width;
+  const cH2   = scaledVP.height;
+  const fSize = Math.round(cW2 * 0.032);  // ขนาดตัวอักษรสัดส่วน
+
+  ctx.save();
+  // กล่องพื้นหลังขาวโปร่ง
+  const boxW  = cW2 * 0.36;
+  const boxH  = fSize * 4.2;
+  const boxX  = cW2 - boxW - cW2 * 0.04;
+  const boxY  = cH2 - boxH - cH2 * 0.04;
+  ctx.fillStyle = 'rgba(255,255,255,0.88)';
+  ctx.fillRect(boxX, boxY, boxW, boxH);
+
+  ctx.font      = `bold ${fSize}px 'Sarabun', sans-serif`;
+  ctx.fillStyle = '#111';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  const cx = boxX + boxW / 2;
+  ctx.fillText('สำเนาถูกต้อง', cx, boxY + fSize * 0.3);
+
+  // เส้นประสำหรับเขียนชื่อ
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth   = 1;
+  ctx.setLineDash([4, 3]);
+  const lineY = boxY + fSize * 1.9;
+  ctx.beginPath();
+  ctx.moveTo(boxX + boxW * 0.06, lineY);
+  ctx.lineTo(boxX + boxW * 0.94, lineY);
+  ctx.stroke();
+
+  ctx.font         = `${Math.round(fSize * 0.72)}px 'Sarabun', sans-serif`;
+  ctx.fillStyle    = '#555';
+  ctx.setLineDash([]);
+  ctx.fillText('(ลงชื่อ-นามสกุล)', cx, lineY + fSize * 0.25);
+
+  ctx.restore();
+
+  return canvas;
+}
+
+/** สร้าง A4 section จาก canvas */
+function canvasToA4Section(canvas, pageLabel) {
+  const section = document.createElement('section');
+  section.className = 'a4-sheet a4-sheet--attach';
+  canvas.style.cssText = 'width:100%;height:auto;display:block;';
+  section.appendChild(canvas);
+  if (pageLabel) {
+    const pg = document.createElement('div');
+    pg.className = 'page-number';
+    pg.textContent = pageLabel;
+    section.appendChild(pg);
+  }
+  return section;
+}
+
+/** ลบหน้าแนบเก่าออก แล้ว render ใหม่ตามที่ติ๊ก */
+async function renderAttachPages() {
+  // ลบหน้าแนบเก่า
+  root.querySelectorAll('.a4-sheet--attach').forEach((el) => el.remove());
+  if (!window.pdfjsLib) return;
+
+  const checked = ['id-card','commercial-reg','sme-gp'].filter((type) => {
+    const cb = document.getElementById(`attach-cb-${type}`);
+    return cb && cb.checked && !cb.disabled;
+  });
+  if (checked.length === 0) return;
+
+  // โหลดและ render ทีละไฟล์
+  for (const type of checked) {
+    try {
+      const { data: base64 } = await request(`/settings/attachment/${type}`);
+      if (!base64) continue;
+
+      const bytes   = base64ToUint8Array(base64);
+      const pdfDoc  = await pdfjsLib.getDocument({ data: bytes }).promise;
+      const totalPg = pdfDoc.numPages;
+
+      for (let pg = 1; pg <= totalPg; pg++) {
+        const canvas  = await renderPdfPageToCanvas(pdfDoc, pg, type);
+        const section = canvasToA4Section(canvas,
+          totalPg > 1 ? `(เอกสารแนบ หน้า ${pg}/${totalPg})` : null
+        );
+        root.appendChild(section);
+      }
+    } catch (err) {
+      console.error(`renderAttachPages [${type}]:`, err);
+    }
+  }
+}
