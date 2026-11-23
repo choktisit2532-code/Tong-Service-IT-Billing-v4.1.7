@@ -634,9 +634,6 @@ async function updateRelatedWorkflow(client, target, sources) {
                 const linkedBillingIds = await linkRelatedBillingStatementsToReceipt(client, source.id, target.id);
                 linkedBillingIds.forEach((id) => billingStatementIdsToRefresh.add(id));
             }
-            if (source.document_type === 'BN') {
-                billingStatementIdsToRefresh.add(Number(source.id));
-            }
         }
     }
 
@@ -866,7 +863,7 @@ async function createDocument({ body, userId }) {
                 throw new AppError(400, 'เอกสารต้นทางต้องเป็นของลูกค้ารายเดียวกัน', 'SOURCE_CUSTOMER_MISMATCH');
             }
             if (!allowedSources.includes(source.document_type)) {
-                throw new AppError(400, `ไม่สามารถใช้ ${source.document_type} เป็นเอกสารต้นทางได้`, 'INVALID_SOURCE_TYPE');
+                throw new AppError(400, `ไม่สามารถใช้เอกสาร ${source.document_type} เป็นเอกสารต้นทางของ ${body.document_type} ได้ (ตามเงื่อนไขลูกค้าประเภท ${customer.customer_type} อนุญาตเฉพาะ: ${allowedSources.length ? allowedSources.join(', ') : 'สร้างโดยตรงเท่านั้น'})`, 'INVALID_SOURCE_TYPE');
             }
             const forbiddenStatuses = body.document_type === 'BN'
                 ? ['CANCELLED', 'REJECTED']
@@ -1649,25 +1646,6 @@ async function onReceiptPaid(client, receiptId, userId) {
         );
         if (billingResult.rows.length) {
             await refreshBillingStatements(client, userId, billingResult.rows.map((item) => Number(item.target_document_id)));
-        }
-
-        const bnCheck = await client.query(
-            `SELECT id, status FROM documents WHERE id = $1 AND document_type = 'BN'`,
-            [row.source_document_id]
-        );
-        if (bnCheck.rows[0]?.status === 'PAID') {
-            await client.query(
-                `UPDATE documents inv
-                 SET status = 'PAID', updated_by = $1, updated_at = NOW()
-                 FROM document_relations r
-                 WHERE r.target_document_id = $2
-                   AND r.relation_type = 'INCLUDED_IN'
-                   AND r.source_document_id = inv.id
-                   AND inv.document_type = 'IN'
-                   AND inv.deleted_at IS NULL
-                   AND inv.status <> 'CANCELLED'`,
-                [userId, row.source_document_id]
-            );
         }
     }
 }

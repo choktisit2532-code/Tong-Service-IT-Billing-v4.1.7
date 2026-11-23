@@ -8,7 +8,7 @@ test('general customer supports invoice, direct receipt, or optional delivery wo
     assert.equal(assertDocumentTypeAllowed('general', 'DO'), true);
     assert.equal(assertDocumentTypeAllowed('general', 'IN'), true);
     assert.deepEqual(allowedSourceTypes('general', 'IN'), ['QT', 'DO']);
-    assert.deepEqual(allowedSourceTypes('general', 'RC'), ['IN', 'QT', 'DO', 'BN']);
+    assert.deepEqual(allowedSourceTypes('general', 'RC'), ['IN', 'QT', 'DO']);
 });
 
 test('government receipt must reference delivery document', () => {
@@ -19,5 +19,5 @@ test('government receipt must reference delivery document', () => {
 test('private billing and receipt support business workflow', () => {
     assert.deepEqual(allowedSourceTypes('private', 'IN'), ['QT', 'DO']);
     assert.deepEqual(allowedSourceTypes('private', 'BN'), ['IN']);
-    assert.deepEqual(allowedSourceTypes('private', 'RC'), ['IN', 'BN']);
+    assert.deepEqual(allowedSourceTypes('private', 'RC'), ['IN']);
 });
