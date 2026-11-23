@@ -18,8 +18,8 @@ function allowedSourceTypes(customerType, targetType) {
 
     if (targetType === 'RC') {
         if (customerType === 'government') return ['DO'];
-        if (customerType === 'private') return ['IN'];
-        return ['IN', 'QT', 'DO'];
+        if (customerType === 'private') return ['IN', 'BN'];
+        return ['IN', 'QT', 'DO', 'BN'];
     }
 
     return [];

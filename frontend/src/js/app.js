@@ -871,7 +871,7 @@ function renderDocumentActions(d) {
       actions.push(actionIcon({ icon:'calendar-clock', title:'สร้างใบแจ้งหนี้จากเอกสารนี้', data:{ 'next-type':'IN', 'next-source':d.id }, className:'action-warning' }));
     }
     if (
-      (d.customer_type === 'private' && d.document_type === 'IN')
+      (d.customer_type === 'private' && ['IN', 'BN'].includes(d.document_type))
       || (d.customer_type === 'government' && d.document_type === 'DO')
       || (!['private','government'].includes(d.customer_type) && ['DO','IN','BN'].includes(d.document_type))
     ) {
@@ -1153,7 +1153,7 @@ const documentDetailCopy = {
   DO: ['บันทึกการส่งมอบ', 'เลือกใบเสนอราคาต้นทางเพื่อลดการกรอกข้อมูลซ้ำ'],
   IN: ['จัดทำใบแจ้งหนี้', 'แจ้งยอดก่อนรับชำระ โดยเลือกใบเสนอราคาหรือกรอกรายการเองได้'],
   BN: ['สร้างใบวางบิล', 'เลือกใบแจ้งหนี้หลายใบของลูกค้ารายเดียวกัน'],
-  RC: ['รับชำระและออกใบเสร็จ', 'สำหรับลูกค้าเอกชนให้เลือกใบแจ้งหนี้เท่านั้น เพื่อดึงรายละเอียดสินค้า/บริการให้ครบ']
+  RC: ['รับชำระและออกใบเสร็จ', 'เลือกใบแจ้งหนี้หรือใบวางบิล เพื่อบันทึกการรับชำระเงิน']
 };
 
 function setWizardStep(step) {
@@ -2166,7 +2166,7 @@ $('#doc-save-quick-customer').addEventListener('click', async () => {
 
 function sourceSelectionCopy(type) {
   if (type === 'BN') return ['เลือกใบแจ้งหนี้ที่ต้องการรวม', 'เลือกได้หลายใบ ระบบรวมยอดและป้องกันการวางบิลซ้ำ'];
-  if (type === 'RC') return ['เลือกใบแจ้งหนี้ที่ลูกค้าชำระ', 'ลูกค้าเอกชนต้องออกใบเสร็จจากใบแจ้งหนี้ เพื่อให้มีรายละเอียดสินค้า/บริการครบ'];
+  if (type === 'RC') return ['เลือกเอกสารที่ลูกค้าชำระ', 'เลือกใบแจ้งหนี้หรือใบวางบิล เพื่อบันทึกการรับชำระเงิน'];
   if (type === 'DO') return ['เลือกใบเสนอราคาที่ส่งมอบ', 'ระบบคัดลอกรายการและจำนวนจากใบเสนอราคา'];
   if (type === 'IN') return ['เลือกใบเสนอราคาหรือใบส่งมอบงาน', 'ระบบคัดลอกรายการ ลูกค้า จำนวน และยอดมาให้อัตโนมัติ'];
   return ['เลือกเอกสารต้นทาง', 'ระบบจะเชื่อมสถานะและข้อมูลให้อัตโนมัติ'];
