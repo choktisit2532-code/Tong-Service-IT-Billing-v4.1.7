@@ -376,14 +376,14 @@ async function runWithBusy(button, task, busyText = 'กำลังโหลด
 }
 
 const viewMeta = {
-  dashboard: ['แดชบอร์ดควบคุม', 'ภาพรวมรายได้ เอกสาร และงานค้าง'],
-  documents: ['คลังเอกสาร', 'จัดการใบเสนอราคา ใบแจ้งหนี้ ใบวางบิล ใบเสร็จ และใบส่งของ / ใบส่งมอบงาน'],
-  repairs: ['งานรับซ่อม', 'บันทึกใบรับเครื่องซ่อม ติดตามสถานะ และหนังสือสัญญาความยินยอมส่งซ่อมต่อศูนย์เฉพาะทาง'],
-  customers: ['รายชื่อลูกค้า', 'ข้อมูลลูกค้าและกฎการหัก ณ ที่จ่าย'],
-  products: ['สินค้าและบริการ', 'คลังรายการมาตรฐาน ค่าแรง อะไหล่ และค่าใช้จ่าย'],
-  reports: ['รายงานการเงิน', 'รายงานรายได้ ลูกหนี้ ภาษี ยอดขาย และเอกสารยกเลิก'],
-  audit: ['Audit Log', 'ตรวจสอบประวัติการกระทำของผู้ใช้และระบบ'],
-  settings: ['ตั้งค่าระบบ', 'ข้อมูลร้าน การรับชำระเงิน รูปแบบเอกสาร และผู้ใช้งาน']
+  dashboard: ['แดชบอร์ดควบคุม', 'ภาพรวมรายได้ เอกสาร และงานค้าง', 'layout-dashboard'],
+  documents: ['คลังเอกสาร', 'จัดการใบเสนอราคา ใบแจ้งหนี้ ใบวางบิล ใบเสร็จ และใบส่งของ / ใบส่งมอบงาน', 'file-plus-2'],
+  repairs: ['งานรับซ่อม', 'บันทึกใบรับเครื่องซ่อม ติดตามสถานะ และหนังสือสัญญาความยินยอมส่งซ่อมต่อศูนย์เฉพาะทาง', 'wrench'],
+  customers: ['รายชื่อลูกค้า', 'ข้อมูลลูกค้าและกฎการหัก ณ ที่จ่าย', 'users'],
+  products: ['สินค้าและบริการ', 'คลังรายการมาตรฐาน ค่าแรง อะไหล่ และค่าใช้จ่าย', 'package'],
+  reports: ['รายงานการเงิน', 'รายงานรายได้ ลูกหนี้ ภาษี ยอดขาย และเอกสารยกเลิก', 'chart-no-axes-combined'],
+  audit: ['Audit Log', 'ตรวจสอบประวัติการกระทำของผู้ใช้และระบบ', 'history'],
+  settings: ['ตั้งค่าระบบ', 'ข้อมูลร้าน การรับชำระเงิน รูปแบบเอกสาร และผู้ใช้งาน', 'settings']
 };
 
 async function switchView(name) {
@@ -398,6 +398,11 @@ async function switchView(name) {
   $$('.nav-item').forEach((el) => el.classList.toggle('active', el.dataset.view === name));
   $('#page-title').textContent = viewMeta[name][0];
   $('#page-subtitle').textContent = viewMeta[name][1];
+  const iconWrap = $('#page-heading-icon');
+  if (iconWrap && viewMeta[name]?.[2]) {
+    iconWrap.innerHTML = `<i data-lucide="${viewMeta[name][2]}"></i>`;
+    refreshIcons();
+  }
   $('#sidebar').classList.remove('open');
   $('#user-menu').classList.add('hidden');
 
