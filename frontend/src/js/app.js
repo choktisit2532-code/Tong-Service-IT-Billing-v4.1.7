@@ -863,17 +863,14 @@ function renderDocumentActions(d) {
       if (['private','general'].includes(d.customer_type)) {
         actions.push(actionIcon({ icon:'calendar-clock', title:'สร้างใบแจ้งหนี้จากเอกสารนี้', data:{ 'next-type':'IN', 'next-source':d.id }, className:'action-warning' }));
       }
-      if (d.customer_type !== 'government' && d.customer_type !== 'private') {
-        actions.push(actionIcon({ icon:'badge-dollar-sign', title:'รับชำระและออกใบเสร็จ', data:{ 'next-type':'RC', 'next-source':d.id }, className:'action-success' }));
-      }
     }
     if (d.document_type === 'DO' && ['private','general'].includes(d.customer_type)) {
       actions.push(actionIcon({ icon:'calendar-clock', title:'สร้างใบแจ้งหนี้จากเอกสารนี้', data:{ 'next-type':'IN', 'next-source':d.id }, className:'action-warning' }));
     }
     if (
       (d.customer_type === 'private' && d.document_type === 'IN')
-      || (d.customer_type === 'government' && d.document_type === 'DO')
-      || (!['private','government'].includes(d.customer_type) && ['DO','IN'].includes(d.document_type))
+      || (d.customer_type === 'government' && ['QT','DO'].includes(d.document_type))
+      || (!['private','government'].includes(d.customer_type) && ['QT','DO','IN'].includes(d.document_type))
     ) {
       actions.push(actionIcon({ icon:'badge-dollar-sign', title:'รับชำระและออกใบเสร็จ', data:{ 'next-type':'RC', 'next-source':d.id }, className:'action-success' }));
     }
@@ -2177,8 +2174,8 @@ function sourceSelectionCopy(type) {
     }
     if (cType === 'government') {
       return [
-        'เลือกใบส่งมอบงานที่ได้รับชำระ',
-        '🔒 หน่วยงานราชการ: ออกใบเสร็จจาก "ใบส่งมอบงาน (DO)" เท่านั้น ตามขั้นตอนระเบียบราชการ'
+        'เลือกเอกสารที่หน่วยงานชำระ',
+        'หน่วยงานราชการ: ออกใบเสร็จจาก "ใบเสนอราคา (QT)" หรือ "ใบส่งมอบงาน (DO)" ได้ตามที่หน่วยงานกำหนด'
       ];
     }
     return ['เลือกเอกสารที่ลูกค้าชำระ', 'ลูกค้าทั่วไป: เลือกใบแจ้งหนี้ (IN), ใบเสนอราคา (QT) หรือใบส่งของ (DO)'];
@@ -2197,7 +2194,7 @@ function sourceEmptyMessage(targetType) {
       return 'ไม่พบใบแจ้งหนี้ (IN) ที่พร้อมรับชำระของลูกค้ารายนี้ (ระบบล็อกเงื่อนไขลูกค้าบริษัท/นิติบุคคล ให้ออกใบเสร็จจาก "ใบแจ้งหนี้ (IN)" เท่านั้น ไม่สามารถเลือกใบวางบิล BN ได้ เพื่อป้องกันยอดซ้ำซ้อนและให้รายการสินค้าแสดงครบถ้วน)';
     }
     if (cType === 'government') {
-      return 'ไม่พบใบส่งมอบงาน (DO) ที่พร้อมรับชำระของหน่วยงานนี้ (ระบบล็อกเงื่อนไขหน่วยงานราชการ ให้ออกใบเสร็จจาก "ใบส่งมอบงาน (DO)" เท่านั้น)';
+      return 'ไม่พบเอกสาร (ใบเสนอราคา QT หรือใบส่งมอบงาน DO) ที่พร้อมรับชำระของหน่วยงานนี้';
     }
     return 'ไม่พบเอกสารที่พร้อมรับชำระ หรือเอกสารถูกบันทึกรับชำระครบตามยอดแล้ว';
   }
